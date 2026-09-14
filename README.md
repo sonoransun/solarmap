@@ -3,9 +3,7 @@
 Solar map displays our planets' orientation across time, relative distance from each other, notable alignments,
 theatrical fly bys with faster than light smooth acceleration in an animated fashion, all directly in your browser!
 
-Run it locally with `npm install && npm run dev`, or publish the committed `docs/` build with GitHub Pages
-(**Settings → Pages → Source: deploy from a branch → `main` / `/docs`**); it is then served at
-`https://<user>.github.io/<repo>/`.
+Run it locally with `npm install && npm run dev`, or view the site at  [Solar Map](https://https://sonoransun.github.io/solarmap/)
 
 The map is computed, not animated: every position, distance, alignment time and rotation phase comes from the
 VSOP87A planetary theory and the IAU rotation models evaluated in double precision, and is checked against JPL
