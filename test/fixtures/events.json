@@ -1,0 +1,2689 @@
+{
+  "source": "Hand-entered from the alignment-events research (bq2vila6z.txt §C1–C7) and the plan's \"events (geometric)\" and \"events (almanac sanity)\" verification rows; every row carries its source URL and basis. Horizons values are the research's own API runs (not published almanac numbers).",
+  "conventions": {
+    "times": "UTC, 'YYYY-MM-DDTHH:MM[:SS]'. Espenak hour-only values are stored as hh:30 (the ±30 min half-hour convention, final critique byf0bzyiw.txt). in-the-sky.org values carry hh:mm only, with the calendar date taken from Horizons/Espenak because that site shows some dates one day early (research §0 'ITS').",
+    "basis": "'geometric-horizons' = JPL Horizons VECTORS with VEC_CORR=NONE (no light-time, no aberration, J2000 ecliptic), the same model class as this app's VSOP87 pipeline; 'apparent-almanac' = published apparent geocentric phenomena, which differ from geometric instants by 6–40 min (oppositions/conjunctions) and by up to a few hours (greatest elongations) — research §A 'Geometric vs apparent'.",
+    "bodies": "ids in Sun-outward order (events.js sorts bodies the same way)",
+    "tolerances": "per row: tolMin (minutes, on utc), tolMinLambda (minutes, on lambdaUtc), tolDays (on date), expect.tolDeg / tolArcmin / tolArcsec / tolAu / tolKm on the named value; rows with `excluded` are recorded but not asserted",
+    "hourOnly": "Espenak page: \"Inferior/Superior Conjunctions (Mercury & Venus) ± 30 minutes; Greatest Elongation ± 30 minutes; Aphelion/Perihelion ± 30 minutes; Earth perihelion ±0.00001 AU\""
+  },
+  "sources": {
+    "HZG": "https://ssd.jpl.nasa.gov/api/horizons.api — JPL Horizons API, EPHEM_TYPE=VECTORS, VEC_CORR=NONE, REF_PLANE=ECLIPTIC, REF_SYSTEM=ICRF, TIME_TYPE=UT (geometric, no light-time/aberration; research bq2vila6z.txt §0 \"HZG\", 5-min/2-min grid, ±1–2 min)",
+    "HZA": "https://ssd.jpl.nasa.gov/api/horizons.api — JPL Horizons API, EPHEM_TYPE=OBSERVER, CENTER=500@399, QUANTITIES 2,20,23,31 (apparent; research §0 \"HZA\")",
+    "ESP": [
+      "https://astropixels.com/almanac/almanac01/almanac2003gmt.html",
+      "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "https://astropixels.com/almanac/almanac21/almanac2027gmt.html"
+    ],
+    "ITS": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x (NN: 11 inner-planet, 12 outer-planet, 15 appulse, 20 conjunction = same RA); e.g. https://in-the-sky.org/news.php?id=20240908_12_100",
+    "WLC": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+    "WGC": "https://en.wikipedia.org/wiki/Great_conjunction",
+    "SEDS": "https://spider.seds.org/spider/Mars/mars2003.html",
+    "NASA_HUBBLE": "https://science.nasa.gov/missions/hubble/mars-closest-encounter/",
+    "NASA_TRANSIT": "https://eclipse.gsfc.nasa.gov/OH/transit12.html",
+    "SKY": "https://www.skyatnightmagazine.com/news/seven-planet-parade-28-february-2025",
+    "MARS_STATIONARY": "test/fixtures/horizons/mars-stationary-2024.json"
+  },
+  "geometric": [
+    {
+      "kind": "opposition",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2025-01-16T02:31",
+      "tolMin": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "JPL Horizons API, EPHEM_TYPE=VECTORS, VEC_CORR=NONE, REF_PLANE=ECLIPTIC, REF_SYSTEM=ICRF, TIME_TYPE=UT (geometric, no light-time/aberration; research bq2vila6z.txt §0 \"HZG\", 5-min/2-min grid, ±1–2 min); research §C1",
+      "expect": {
+        "elongationDeg": 175.71,
+        "tolDeg": 0.01
+      },
+      "extremum": {
+        "utc": "2025-01-16T01:42",
+        "tolMin": 20,
+        "elongationDeg": 175.7125,
+        "tolDeg": 0.01,
+        "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+        "basis": "apparent-almanac",
+        "note": "Maximum of the APPARENT S-O-T elongation (research §C1 \"max ψ 175.7125° at 01:42\", HZA column). The maximum is flat (curvature 1.1e-7 °/min²): the geometric vertex measured with VSOP87 lies at 01:54 (ψ differs by 1.8e-5° between the two instants), so the plan's ±10 min is widened to ±20 min = 1.5 × the measured 12.5 min offset."
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "saturn"
+      ],
+      "utc": "2025-09-21T05:32",
+      "tolMin": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C1"
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "neptune"
+      ],
+      "utc": "2025-09-23T12:38",
+      "tolMin": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C1"
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "jupiter"
+      ],
+      "utc": "2026-01-10T08:30",
+      "tolMin": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C1"
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2003-08-28T17:51",
+      "tolMin": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C5 (seds gives the apparent instant 17:58:49)"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-03-24T19:41",
+      "tolMin": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2025-03-23T01:01",
+      "tolMin": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2026-01-06T15:56",
+      "tolMin": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2012-06-06T01:02",
+      "tolMin": 15,
+      "basis": "geometric-horizons",
+      "source": "https://eclipse.gsfc.nasa.gov/OH/transit12.html",
+      "note": "Transit of Venus 2012: HZA apparent λ inferior conjunction 01:08 UT; geometric ≈ 6 min earlier (final critique byf0bzyiw.txt, Venus IC offset measured for 2025). NASA/Espenak geocentric minimum separation 554″ at greatest transit 01:29:36 UT.",
+      "expect": {
+        "transit": true
+      },
+      "extremum": {
+        "elongationArcsec": 554,
+        "tolArcsec": 10,
+        "source": "https://eclipse.gsfc.nasa.gov/OH/transit12.html",
+        "basis": "apparent-almanac",
+        "note": "\"minimum separation from the Sun is 554 arc-seconds\" (geocentric)"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2025-01-10T04:46",
+      "tolMin": 180,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C3 (HZG 04:46, 47.167°); apparent maximum 02:12",
+      "expect": {
+        "elongationDeg": 47.167,
+        "tolDeg": 0.01,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-08-19T09:38",
+      "tolMin": 180,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C3 (HZG 09:38, 18.584°); apparent maximum 08:57",
+      "expect": {
+        "elongationDeg": 18.584,
+        "tolDeg": 0.01,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "jupiter"
+      ],
+      "utc": "2025-08-12T06:37",
+      "tolMin": 5,
+      "lambdaUtc": "2025-08-12T05:28",
+      "tolMinLambda": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C4 (HZG columns)",
+      "expect": {
+        "separationArcmin": 51.6,
+        "tolArcmin": 0.5
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "jupiter",
+        "saturn"
+      ],
+      "utc": "2020-12-21T18:11",
+      "tolMin": 5,
+      "lambdaUtc": "2020-12-21T18:10",
+      "tolMinLambda": 3,
+      "basis": "geometric-horizons",
+      "source": "https://en.wikipedia.org/wiki/Great_conjunction",
+      "note": "Great conjunction 2020: HZG geometric minimum 18:11 / λ-conjunction 18:10 (research §C4, §C5); Wikipedia: closest separation 18:20 UTC, 6.1′ (apparent)",
+      "expect": {
+        "separationArcmin": 6.1,
+        "tolArcmin": 0.3
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "mars"
+      ],
+      "utc": "2024-02-22T09:44",
+      "tolMin": 5,
+      "lambdaUtc": "2024-02-22T07:12",
+      "tolMinLambda": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C4 (HZG columns)",
+      "expect": {
+        "separationArcmin": 37.4,
+        "tolArcmin": 0.5
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "mars",
+        "jupiter"
+      ],
+      "utc": "2024-08-14T14:50",
+      "tolMin": 5,
+      "lambdaUtc": "2024-08-14T15:18",
+      "tolMinLambda": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C4 (HZG columns)",
+      "expect": {
+        "separationArcmin": 18.4,
+        "tolArcmin": 0.5
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "mercury",
+        "mars"
+      ],
+      "utc": "2025-11-13T03:30",
+      "tolMin": 5,
+      "lambdaUtc": "2025-11-12T23:01",
+      "tolMinLambda": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C4 (HZG columns)",
+      "expect": {
+        "separationArcmin": 73.3,
+        "tolArcmin": 0.5
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "saturn"
+      ],
+      "utc": "2025-01-18T17:33",
+      "tolMin": 5,
+      "lambdaUtc": "2025-01-19T01:30",
+      "tolMinLambda": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C4 (HZG columns)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "jupiter"
+      ],
+      "utc": "2026-06-09T19:46",
+      "tolMin": 5,
+      "lambdaUtc": "2026-06-09T19:57",
+      "tolMinLambda": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C4 (HZG columns)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "mars",
+        "jupiter"
+      ],
+      "utc": "2026-11-16T02:01",
+      "tolMin": 5,
+      "lambdaUtc": "2026-11-16T06:20",
+      "tolMinLambda": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C4 (HZG columns)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "saturn"
+      ],
+      "utc": "2027-05-07T18:39",
+      "tolMin": 5,
+      "lambdaUtc": "2027-05-07T18:43",
+      "tolMinLambda": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C4 (HZG columns)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "mars"
+      ],
+      "utc": "2027-11-25T00:37",
+      "tolMin": 5,
+      "lambdaUtc": "2027-11-25T01:33",
+      "tolMinLambda": 3,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C4 (HZG columns)",
+      "expect": {
+        "separationArcmin": 18.6,
+        "tolArcmin": 0.5
+      }
+    },
+    {
+      "kind": "perihelion",
+      "bodies": [
+        "earth"
+      ],
+      "utc": "2025-01-04T13:28",
+      "tolMin": 5,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6: Earth-CENTRE perihelion 2025-01-04 13:28 UT, 147,103,686 km; the Earth–Moon barycentre perihelion is 2025-01-03 09:57 UT (147,100,807 km) and must NOT be reported (Meeus ch. 38; research §A.7)",
+      "expect": {
+        "rKm": 147103686,
+        "tolKm": 200
+      },
+      "rejectUtc": "2025-01-03T09:57",
+      "rejectMinMin": 720
+    },
+    {
+      "kind": "perihelion",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2024-05-08T10:42",
+      "tolMin": 5,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6: 206,670,129 km = 1.38151 AU",
+      "expect": {
+        "rKm": 206670129,
+        "tolKm": 200
+      }
+    },
+    {
+      "kind": "closest-approach",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2003-08-27T09:51:12",
+      "tolMin": 5,
+      "basis": "geometric-horizons",
+      "source": "https://spider.seds.org/spider/Mars/mars2003.html",
+      "note": "seds: \"August 27 (09:51:14 UT); … 55,758,006 km\"; NASA Hubble: 55.8 million km (https://science.nasa.gov/missions/hubble/mars-closest-encounter/); HZG geometric minimum 2003-08-27 09:51:12 UT, 55,758,005.7 km (research §C5)",
+      "expect": {
+        "distanceKm": 55758006,
+        "tolKm": 200
+      }
+    },
+    {
+      "kind": "closest-approach",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2025-01-12T13:37",
+      "tolMin": 5,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Geometric Earth–planet closest approaches (HZG)\"",
+      "expect": {
+        "distanceAu": 0.64228,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "closest-approach",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2027-02-20T00:12",
+      "tolMin": 5,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Geometric Earth–planet closest approaches (HZG)\"",
+      "expect": {
+        "distanceAu": 0.67792,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "closest-approach",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2025-03-22T15:42",
+      "tolMin": 5,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Geometric Earth–planet closest approaches (HZG)\"",
+      "expect": {
+        "distanceAu": 0.2806,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "closest-approach",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2026-10-25T01:42",
+      "tolMin": 5,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Geometric Earth–planet closest approaches (HZG)\"",
+      "expect": {
+        "distanceAu": 0.2728,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "closest-approach",
+      "bodies": [
+        "jupiter"
+      ],
+      "utc": "2024-12-06T10:03",
+      "tolMin": 5,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Geometric Earth–planet closest approaches (HZG)\"",
+      "expect": {
+        "distanceAu": 4.08937,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "closest-approach",
+      "bodies": [
+        "jupiter"
+      ],
+      "utc": "2026-01-09T08:09",
+      "tolMin": 5,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Geometric Earth–planet closest approaches (HZG)\"",
+      "expect": {
+        "distanceAu": 4.23169,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "closest-approach",
+      "bodies": [
+        "saturn"
+      ],
+      "utc": "2025-09-21T08:04",
+      "tolMin": 5,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Geometric Earth–planet closest approaches (HZG)\"",
+      "expect": {
+        "distanceAu": 8.54676,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "closest-approach",
+      "bodies": [
+        "uranus"
+      ],
+      "utc": "2025-11-21T10:18",
+      "tolMin": 5,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Geometric Earth–planet closest approaches (HZG)\"",
+      "expect": {
+        "distanceAu": 18.50937,
+        "tolAu": 0.0001
+      }
+    },
+    {
+      "kind": "closest-approach",
+      "bodies": [
+        "neptune"
+      ],
+      "utc": "2025-09-22T16:18",
+      "tolMin": 5,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Geometric Earth–planet closest approaches (HZG)\"",
+      "expect": {
+        "distanceAu": 28.88412,
+        "tolAu": 0.0003
+      }
+    },
+    {
+      "kind": "helio-parade",
+      "k": 8,
+      "bodies": [
+        "mercury",
+        "venus",
+        "earth",
+        "mars",
+        "jupiter",
+        "saturn",
+        "uranus",
+        "neptune"
+      ],
+      "date": "2024-11-23",
+      "tolDays": 1,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Heliocentric parade local minima (daily grid, HZG; date, arc, members)\" — a 1-day-grid minimum at 0h UT, compared with the grid-node arc (arcGridDeg); existence, not count (judges b1p4znxk4.txt)",
+      "expect": {
+        "arcGridDeg": 102.1,
+        "tolDeg": 0.5,
+        "members": [
+          "mercury",
+          "venus",
+          "earth",
+          "mars",
+          "jupiter",
+          "saturn",
+          "uranus",
+          "neptune"
+        ]
+      }
+    },
+    {
+      "kind": "helio-parade",
+      "k": 8,
+      "bodies": [
+        "mercury",
+        "venus",
+        "earth",
+        "mars",
+        "jupiter",
+        "saturn",
+        "uranus",
+        "neptune"
+      ],
+      "date": "2026-10-29",
+      "tolDays": 1,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Heliocentric parade local minima (daily grid, HZG; date, arc, members)\" — a 1-day-grid minimum at 0h UT, compared with the grid-node arc (arcGridDeg); existence, not count (judges b1p4znxk4.txt)",
+      "expect": {
+        "arcGridDeg": 130.5,
+        "tolDeg": 0.5,
+        "members": [
+          "mercury",
+          "venus",
+          "earth",
+          "mars",
+          "jupiter",
+          "saturn",
+          "uranus",
+          "neptune"
+        ]
+      }
+    },
+    {
+      "kind": "helio-parade",
+      "k": 8,
+      "bodies": [
+        "mercury",
+        "venus",
+        "earth",
+        "mars",
+        "jupiter",
+        "saturn",
+        "uranus",
+        "neptune"
+      ],
+      "date": "2025-02-17",
+      "tolDays": 1,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Heliocentric parade local minima (daily grid, HZG; date, arc, members)\" — a 1-day-grid minimum at 0h UT, compared with the grid-node arc (arcGridDeg); existence, not count (judges b1p4znxk4.txt)",
+      "expect": {
+        "arcGridDeg": 157.4,
+        "tolDeg": 0.5,
+        "members": [
+          "mercury",
+          "venus",
+          "earth",
+          "mars",
+          "jupiter",
+          "saturn",
+          "uranus",
+          "neptune"
+        ]
+      }
+    },
+    {
+      "kind": "helio-parade",
+      "k": 8,
+      "bodies": [
+        "mercury",
+        "venus",
+        "earth",
+        "mars",
+        "jupiter",
+        "saturn",
+        "uranus",
+        "neptune"
+      ],
+      "date": "2024-05-26",
+      "tolDays": 1,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Heliocentric parade local minima (daily grid, HZG; date, arc, members)\" — a 1-day-grid minimum at 0h UT, compared with the grid-node arc (arcGridDeg); existence, not count (judges b1p4znxk4.txt)",
+      "expect": {
+        "arcGridDeg": 173.7,
+        "tolDeg": 0.5,
+        "members": [
+          "mercury",
+          "venus",
+          "earth",
+          "mars",
+          "jupiter",
+          "saturn",
+          "uranus",
+          "neptune"
+        ]
+      }
+    },
+    {
+      "kind": "helio-parade",
+      "k": 8,
+      "bodies": [
+        "mercury",
+        "venus",
+        "earth",
+        "mars",
+        "jupiter",
+        "saturn",
+        "uranus",
+        "neptune"
+      ],
+      "date": "2027-01-25",
+      "tolDays": 1,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Heliocentric parade local minima (daily grid, HZG; date, arc, members)\" — a 1-day-grid minimum at 0h UT, compared with the grid-node arc (arcGridDeg); existence, not count (judges b1p4znxk4.txt)",
+      "expect": {
+        "arcGridDeg": 177.1,
+        "tolDeg": 0.5,
+        "members": [
+          "mercury",
+          "venus",
+          "earth",
+          "mars",
+          "jupiter",
+          "saturn",
+          "uranus",
+          "neptune"
+        ]
+      }
+    },
+    {
+      "kind": "helio-parade",
+      "k": 4,
+      "bodies": [
+        "mercury",
+        "mars",
+        "saturn",
+        "neptune"
+      ],
+      "date": "2026-05-06",
+      "tolDays": 1,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Heliocentric parade local minima (daily grid, HZG; date, arc, members)\" — a 1-day-grid minimum at 0h UT, compared with the grid-node arc (arcGridDeg); existence, not count (judges b1p4znxk4.txt)",
+      "expect": {
+        "arcGridDeg": 4,
+        "tolDeg": 0.5,
+        "members": [
+          "mercury",
+          "mars",
+          "saturn",
+          "neptune"
+        ]
+      }
+    },
+    {
+      "kind": "helio-parade",
+      "k": 5,
+      "bodies": [
+        "mercury",
+        "venus",
+        "earth",
+        "saturn",
+        "neptune"
+      ],
+      "date": "2026-10-29",
+      "tolDays": 1,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Heliocentric parade local minima (daily grid, HZG; date, arc, members)\" — a 1-day-grid minimum at 0h UT, compared with the grid-node arc (arcGridDeg); existence, not count (judges b1p4znxk4.txt)",
+      "expect": {
+        "arcGridDeg": 35.3,
+        "tolDeg": 0.5,
+        "members": [
+          "mercury",
+          "venus",
+          "earth",
+          "saturn",
+          "neptune"
+        ]
+      }
+    },
+    {
+      "kind": "helio-parade",
+      "k": 3,
+      "bodies": [
+        "mercury",
+        "saturn",
+        "neptune"
+      ],
+      "date": "2025-11-10",
+      "tolDays": 1,
+      "basis": "geometric-horizons",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "research §C6 \"Heliocentric parade local minima (daily grid, HZG; date, arc, members)\" — a 1-day-grid minimum at 0h UT, compared with the grid-node arc (arcGridDeg); existence, not count (judges b1p4znxk4.txt)",
+      "expect": {
+        "arcGridDeg": 0.9,
+        "tolDeg": 0.5,
+        "members": [
+          "mercury",
+          "saturn",
+          "neptune"
+        ]
+      }
+    },
+    {
+      "kind": "stationary",
+      "bodies": [
+        "mars"
+      ],
+      "fixture": "horizons/mars-stationary-2024.json",
+      "tolDays": 1,
+      "basis": "apparent-almanac",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api (OBSERVER, QUANTITIES=31, see fixture url)",
+      "note": "Instants (retrograde-start 2024-12-06T23:31, retrograde-end 2025-02-24T02:02 UT) are read from the fixture; apparent ecliptic-of-date longitudes, ±1 d (plan)"
+    },
+    {
+      "kind": "geo-parade",
+      "date": "2025-02-28",
+      "side": "evening",
+      "minN": 4,
+      "basis": "apparent-almanac",
+      "source": "https://www.skyatnightmagazine.com/news/seven-planet-parade-28-february-2025",
+      "note": "\"seven-planet parade\" of 28 February 2025 (research §A.5); test requires an evening geocentric-parade interval containing the date with N ≥ 4 (plan: N ≥ 4)"
+    }
+  ],
+  "scores": [
+    {
+      "kind": "pair",
+      "bodies": [
+        "jupiter",
+        "saturn"
+      ],
+      "utc": "2020-12-21T18:11",
+      "score": 100,
+      "tol": 0,
+      "note": "40 + 40·(1 − 0.1018/2) + 10 (Jupiter) + 15 (Jupiter–Saturn < 30′) = 102.96 → clamped 100"
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2025-01-16T02:31",
+      "score": 75,
+      "tol": 0,
+      "note": "Mars opposition 75; Δ = 0.6437 AU > 0.6 → no bonus"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "jupiter"
+      ],
+      "utc": "2025-08-12T06:37",
+      "score": 72.8,
+      "tol": 1,
+      "note": "51.6′ = 0.86°: 40 + 40·(1 − 0.43) + 10 = 72.8 (final critique)"
+    }
+  ],
+  "almanac": [
+    {
+      "kind": "opposition",
+      "bodies": [
+        "saturn"
+      ],
+      "utc": "2024-09-08T04:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30)",
+      "its": {
+        "utc": "2024-09-08T04:27",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=20240908_12_100",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "neptune"
+      ],
+      "utc": "2024-09-20T23:30",
+      "tolMin": 150,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30)"
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "uranus"
+      ],
+      "utc": "2024-11-17T03:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30)",
+      "its": {
+        "utc": "2024-11-17T02:36",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "jupiter"
+      ],
+      "utc": "2024-12-07T20:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30)",
+      "its": {
+        "utc": "2024-12-07T20:50",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2025-01-16T01:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30)",
+      "excluded": "Documented outlier (research §0, final critique): Espenak 01 h vs Horizons apparent 02:38 / geometric 02:31 (91–98 min beyond the hh:30 convention); the geometric row covers this event at ±3 min",
+      "its": {
+        "utc": "2025-01-16T02:32",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "saturn"
+      ],
+      "utc": "2025-09-21T05:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30)",
+      "its": {
+        "utc": "2025-09-21T05:37",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "neptune"
+      ],
+      "utc": "2025-09-23T11:30",
+      "tolMin": 150,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30)",
+      "its": {
+        "utc": "2025-09-23T12:45",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "uranus"
+      ],
+      "utc": "2025-11-21T13:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30)",
+      "its": {
+        "utc": "2025-11-21T12:17",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "jupiter"
+      ],
+      "utc": "2026-01-10T08:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30)",
+      "its": {
+        "utc": "2026-01-10T08:34",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "neptune"
+      ],
+      "utc": "2026-09-26T00:30",
+      "tolMin": 150,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30)",
+      "its": {
+        "utc": "2026-09-26T01:28",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "saturn"
+      ],
+      "utc": "2026-10-04T12:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30)",
+      "its": {
+        "utc": "2026-10-04T12:21",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "uranus"
+      ],
+      "utc": "2026-11-25T23:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30)",
+      "its": {
+        "utc": "2026-11-25T22:33",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "jupiter"
+      ],
+      "utc": "2027-02-11T00:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30)",
+      "its": {
+        "utc": "2027-02-11T00:21",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2027-02-19T15:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30)",
+      "its": {
+        "utc": "2027-02-19T15:44",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "neptune"
+      ],
+      "utc": "2027-09-28T13:30",
+      "tolMin": 150,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30)",
+      "its": {
+        "utc": "2027-09-28T14:10",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "saturn"
+      ],
+      "utc": "2027-10-18T00:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30)",
+      "its": {
+        "utc": "2027-10-18T00:27",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "uranus"
+      ],
+      "utc": "2027-11-30T10:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30)",
+      "its": {
+        "utc": "2027-11-30T09:13",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak (the site shows some dates one day early); its opposition times match Horizons GEOMETRIC values to ≲ 8 min (research §0 \"ITS\"), measured max 6 min → ±15 min"
+      }
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "saturn"
+      ],
+      "utc": "2024-02-28T21:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\""
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "saturn"
+      ],
+      "utc": "2025-03-12T10:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\""
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "saturn"
+      ],
+      "utc": "2026-03-25T08:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\""
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "saturn"
+      ],
+      "utc": "2027-04-07T17:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\""
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "neptune"
+      ],
+      "utc": "2024-03-17T11:30",
+      "tolMin": 150,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\""
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "neptune"
+      ],
+      "utc": "2025-03-19T22:30",
+      "tolMin": 150,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\""
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "neptune"
+      ],
+      "utc": "2026-03-22T10:30",
+      "tolMin": 150,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\""
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "neptune"
+      ],
+      "utc": "2027-03-24T22:30",
+      "tolMin": 150,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\""
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "uranus"
+      ],
+      "utc": "2024-05-13T11:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\"",
+      "excluded": "Not in the plan's almanac row; Espenak's Uranus conjunction hours are 117–137 min from the geometric instants (measured), like the documented Neptune-opposition outliers — recorded for reference only"
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "uranus"
+      ],
+      "utc": "2025-05-18T01:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\"",
+      "excluded": "Not in the plan's almanac row; Espenak's Uranus conjunction hours are 117–137 min from the geometric instants (measured), like the documented Neptune-opposition outliers — recorded for reference only"
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "uranus"
+      ],
+      "utc": "2026-05-22T16:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\"",
+      "excluded": "Not in the plan's almanac row; Espenak's Uranus conjunction hours are 117–137 min from the geometric instants (measured), like the documented Neptune-opposition outliers — recorded for reference only"
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "uranus"
+      ],
+      "utc": "2027-05-27T08:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\"",
+      "excluded": "Not in the plan's almanac row; Espenak's Uranus conjunction hours are 117–137 min from the geometric instants (measured), like the documented Neptune-opposition outliers — recorded for reference only"
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "jupiter"
+      ],
+      "utc": "2024-05-18T18:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\""
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "jupiter"
+      ],
+      "utc": "2025-06-24T15:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\""
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "jupiter"
+      ],
+      "utc": "2026-07-29T12:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\""
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "jupiter"
+      ],
+      "utc": "2027-08-31T08:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\""
+    },
+    {
+      "kind": "conjunction",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2026-01-09T10:30",
+      "tolMin": 150,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30); research §C1 \"Outer-planet conjunctions with the Sun (ESP only, hour)\". Tolerance 150 min = 1.5 × the measured 99.8 min: Mars sits 2.4 AU behind the Sun (light-time 20 min) so the apparent instant is ≈ 1 h after the geometric one, plus Espenak's hour rounding"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2024-02-28T08:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2024-04-11T23:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2024-06-04T15:30",
+      "tolMin": 160,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2024-06-14T16:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2024-08-19T02:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2024-09-30T21:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2024-12-06T02:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-02-09T12:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2025-03-23T01:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30); research §C2",
+      "its": {
+        "utc": "2025-03-23T01:02",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak; inferior-conjunction times match the geometric instant to ≤ 2 min (measured); ITS superior-conjunction times differ by 20–75 min and are not used"
+      }
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-03-24T20:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30); research §C2",
+      "its": {
+        "utc": "2025-03-24T19:43",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak; inferior-conjunction times match the geometric instant to ≤ 2 min (measured); ITS superior-conjunction times differ by 20–75 min and are not used"
+      }
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-05-30T04:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-08-01T00:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-09-13T11:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-11-20T09:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30); research §C2",
+      "its": {
+        "utc": "2025-11-20T09:19",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak; inferior-conjunction times match the geometric instant to ≤ 2 min (measured); ITS superior-conjunction times differ by 20–75 min and are not used"
+      }
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2026-01-06T16:30",
+      "tolMin": 160,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2026-01-21T16:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2026-03-07T11:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2026-05-14T14:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2026-07-13T01:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2026-08-27T17:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2026-10-24T03:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30); research §C2",
+      "its": {
+        "utc": "2026-10-24T03:39",
+        "tolMin": 15,
+        "source": "https://in-the-sky.org/news.php?id=YYYYMMDD_NN_10x",
+        "note": "in-the-sky.org hh:mm only, date from Horizons/Espenak; inferior-conjunction times match the geometric instant to ≤ 2 min (measured); ITS superior-conjunction times differ by 20–75 min and are not used"
+      }
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2026-11-04T14:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2027-01-01T17:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2027-02-18T17:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2027-04-28T21:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2027-06-23T08:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2027-08-11T11:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2027-08-12T00:30",
+      "tolMin": 160,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2027-10-19T15:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "superior-conjunction",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2027-12-11T22:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30); research §C2"
+    },
+    {
+      "kind": "inferior-conjunction",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2012-06-06T01:08",
+      "tolMin": 15,
+      "basis": "apparent-almanac",
+      "source": "https://ssd.jpl.nasa.gov/api/horizons.api",
+      "note": "JPL Horizons API, EPHEM_TYPE=OBSERVER, CENTER=500@399, QUANTITIES 2,20,23,31 (apparent; research §0 \"HZA\"): apparent λ inferior conjunction 2012-06-06 01:08 UT (research §C5); Contact I 22:09:38 … Greatest 01:29:36 … IV 04:49:35 UT (https://eclipse.gsfc.nasa.gov/OH/transit12.html)"
+    },
+    {
+      "kind": "opposition",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2003-08-28T17:58:49",
+      "tolMin": 15,
+      "basis": "apparent-almanac",
+      "source": "https://spider.seds.org/spider/Mars/mars2003.html",
+      "note": "seds: \"August 28, 2003 (17:58:49 UT)\" (apparent; HZA 17:58, HZG 17:51). Espenak 2003 \"Aug 28 16\" is an older series 2 h off — not used"
+    },
+    {
+      "kind": "closest-approach",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2003-08-27T09:51:14",
+      "tolMin": 5,
+      "basis": "apparent-almanac",
+      "source": "https://spider.seds.org/spider/Mars/mars2003.html",
+      "note": "seds: \"August 27 (09:51:14 UT); … 55,758,006 km or 34,646,418 miles\"; NASA Hubble \"34.7 million miles (55.8 million kilometers)\" (https://science.nasa.gov/missions/hubble/mars-closest-encounter/)",
+      "expect": {
+        "distanceKm": 55758006,
+        "tolKm": 200
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2024-01-12T14:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 23.5,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2024-03-24T22:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 18.7,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2024-05-09T21:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 26.4,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2024-07-22T07:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 26.9,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2024-09-05T02:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 18.1,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2024-11-16T08:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 22.5,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2024-12-25T02:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 22,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2025-01-10T04:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 47.2,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-03-08T06:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 18.2,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-04-21T19:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 27.4,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2025-06-01T02:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 45.9,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-07-04T04:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 25.9,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-08-19T10:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 18.6,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-10-29T22:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 23.9,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2025-12-07T21:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 20.7,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2026-02-19T18:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 18.1,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2026-04-03T23:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 27.8,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2026-06-15T20:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 24.5,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2026-08-02T08:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 19.5,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2026-08-15T06:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 45.9,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2026-10-12T10:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 25.2,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2026-11-20T23:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 19.6,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "venus"
+      ],
+      "utc": "2027-01-03T19:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 47,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2027-02-03T06:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 18.3,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2027-03-17T07:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 27.6,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2027-05-28T10:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 22.9,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2027-07-15T19:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 20.7,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2027-09-24T22:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 26.3,
+        "tolDeg": 0.1,
+        "side": "E"
+      }
+    },
+    {
+      "kind": "greatest-elongation",
+      "bodies": [
+        "mercury"
+      ],
+      "utc": "2027-11-04T09:30",
+      "tolMin": 300,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027: hour only (→ hh:30) and angle to 0.1°; greatest-elongation instants are flat maxima (geometric vs apparent up to 2.6 h, research §A) → time ±5 h (research §C7), angle ±0.1°",
+      "expect": {
+        "elongationDeg": 18.8,
+        "tolDeg": 0.1,
+        "side": "W"
+      }
+    },
+    {
+      "kind": "perihelion",
+      "bodies": [
+        "earth"
+      ],
+      "utc": "2024-01-03T01:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30; \"Aphelion/Perihelion ± 30 minutes; Earth perihelion ±0.00001 AU\"); research §C6",
+      "expect": {
+        "rAu": 0.9833,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "perihelion",
+      "bodies": [
+        "earth"
+      ],
+      "utc": "2025-01-04T14:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30; \"Aphelion/Perihelion ± 30 minutes; Earth perihelion ±0.00001 AU\"); research §C6",
+      "expect": {
+        "rAu": 0.98333,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "perihelion",
+      "bodies": [
+        "earth"
+      ],
+      "utc": "2026-01-03T17:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30; \"Aphelion/Perihelion ± 30 minutes; Earth perihelion ±0.00001 AU\"); research §C6",
+      "expect": {
+        "rAu": 0.9833,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "perihelion",
+      "bodies": [
+        "earth"
+      ],
+      "utc": "2027-01-03T02:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30; \"Aphelion/Perihelion ± 30 minutes; Earth perihelion ±0.00001 AU\"); research §C6",
+      "expect": {
+        "rAu": 0.98333,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "aphelion",
+      "bodies": [
+        "earth"
+      ],
+      "utc": "2024-07-05T05:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30; \"Aphelion/Perihelion ± 30 minutes; Earth perihelion ±0.00001 AU\"); research §C6",
+      "expect": {
+        "rAu": 1.01673,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "aphelion",
+      "bodies": [
+        "earth"
+      ],
+      "utc": "2025-07-03T21:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30; \"Aphelion/Perihelion ± 30 minutes; Earth perihelion ±0.00001 AU\"); research §C6",
+      "expect": {
+        "rAu": 1.01664,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "aphelion",
+      "bodies": [
+        "earth"
+      ],
+      "utc": "2026-07-06T18:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30; \"Aphelion/Perihelion ± 30 minutes; Earth perihelion ±0.00001 AU\"); research §C6",
+      "expect": {
+        "rAu": 1.01664,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "aphelion",
+      "bodies": [
+        "earth"
+      ],
+      "utc": "2027-07-05T06:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30; \"Aphelion/Perihelion ± 30 minutes; Earth perihelion ±0.00001 AU\"); research §C6",
+      "expect": {
+        "rAu": 1.01673,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "perihelion",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2024-05-08T11:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 (hour only → hh:30; \"Aphelion/Perihelion ± 30 minutes; Earth perihelion ±0.00001 AU\"); research §C6",
+      "expect": {
+        "rAu": 1.3815,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "perihelion",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2026-03-26T07:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 (hour only → hh:30; \"Aphelion/Perihelion ± 30 minutes; Earth perihelion ±0.00001 AU\"); research §C6",
+      "expect": {
+        "rAu": 1.38126,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "aphelion",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2025-04-16T22:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 (hour only → hh:30; \"Aphelion/Perihelion ± 30 minutes; Earth perihelion ±0.00001 AU\"); research §C6",
+      "expect": {
+        "rAu": 1.66606,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "aphelion",
+      "bodies": [
+        "mars"
+      ],
+      "utc": "2027-03-04T23:30",
+      "tolMin": 100,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 (hour only → hh:30; \"Aphelion/Perihelion ± 30 minutes; Earth perihelion ±0.00001 AU\"); research §C6",
+      "expect": {
+        "rAu": 1.6661,
+        "tolAu": 0.00001
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "mars"
+      ],
+      "utc": "2024-02-22T09:30",
+      "tolMin": 180,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 \"X n°N/S of Y\" = closest approach to the hour, separation to 0.1° (research §0, §C4); closest-approach time ±3 h and separation ±3.5′ (0.1° rounding half-width 3′ + 0.5′) per research §C7",
+      "expect": {
+        "separationArcmin": 36,
+        "tolArcmin": 3.5
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "mars",
+        "jupiter"
+      ],
+      "utc": "2024-08-14T15:30",
+      "tolMin": 180,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2024gmt.html",
+      "note": "Espenak Sky Event Almanac 2024 \"X n°N/S of Y\" = closest approach to the hour, separation to 0.1° (research §0, §C4); closest-approach time ±3 h and separation ±3.5′ (0.1° rounding half-width 3′ + 0.5′) per research §C7",
+      "expect": {
+        "separationArcmin": 18,
+        "tolArcmin": 3.5
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "saturn"
+      ],
+      "utc": "2025-01-18T16:30",
+      "tolMin": 180,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 \"X n°N/S of Y\" = closest approach to the hour, separation to 0.1° (research §0, §C4); closest-approach time ±3 h and separation ±3.5′ (0.1° rounding half-width 3′ + 0.5′) per research §C7",
+      "expect": {
+        "separationArcmin": 132,
+        "tolArcmin": 3.5
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "jupiter"
+      ],
+      "utc": "2025-08-12T07:30",
+      "tolMin": 180,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 \"X n°N/S of Y\" = closest approach to the hour, separation to 0.1° (research §0, §C4); closest-approach time ±3 h and separation ±3.5′ (0.1° rounding half-width 3′ + 0.5′) per research §C7",
+      "expect": {
+        "separationArcmin": 54,
+        "tolArcmin": 3.5
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "mercury",
+        "mars"
+      ],
+      "utc": "2025-11-13T04:30",
+      "tolMin": 180,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2025gmt.html",
+      "note": "Espenak Sky Event Almanac 2025 \"X n°N/S of Y\" = closest approach to the hour, separation to 0.1° (research §0, §C4); closest-approach time ±3 h and separation ±3.5′ (0.1° rounding half-width 3′ + 0.5′) per research §C7",
+      "expect": {
+        "separationArcmin": 72,
+        "tolArcmin": 3.5
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "jupiter"
+      ],
+      "utc": "2026-06-09T20:30",
+      "tolMin": 180,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 \"X n°N/S of Y\" = closest approach to the hour, separation to 0.1° (research §0, §C4); closest-approach time ±3 h and separation ±3.5′ (0.1° rounding half-width 3′ + 0.5′) per research §C7",
+      "expect": {
+        "separationArcmin": 96,
+        "tolArcmin": 3.5
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "mars",
+        "jupiter"
+      ],
+      "utc": "2026-11-16T04:30",
+      "tolMin": 180,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2026gmt.html",
+      "note": "Espenak Sky Event Almanac 2026 \"X n°N/S of Y\" = closest approach to the hour, separation to 0.1° (research §0, §C4); closest-approach time ±3 h and separation ±3.5′ (0.1° rounding half-width 3′ + 0.5′) per research §C7",
+      "expect": {
+        "separationArcmin": 72,
+        "tolArcmin": 3.5
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "saturn"
+      ],
+      "utc": "2027-05-07T16:30",
+      "tolMin": 180,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 \"X n°N/S of Y\" = closest approach to the hour, separation to 0.1° (research §0, §C4); closest-approach time ±3 h and separation ±3.5′ (0.1° rounding half-width 3′ + 0.5′) per research §C7",
+      "expect": {
+        "separationArcmin": 36,
+        "tolArcmin": 3.5
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "mars"
+      ],
+      "utc": "2027-11-25T01:30",
+      "tolMin": 180,
+      "basis": "apparent-almanac",
+      "source": "https://astropixels.com/almanac/almanac21/almanac2027gmt.html",
+      "note": "Espenak Sky Event Almanac 2027 \"X n°N/S of Y\" = closest approach to the hour, separation to 0.1° (research §0, §C4); closest-approach time ±3 h and separation ±3.5′ (0.1° rounding half-width 3′ + 0.5′) per research §C7",
+      "expect": {
+        "separationArcmin": 18,
+        "tolArcmin": 3.5
+      }
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "mars"
+      ],
+      "lambdaUtc": "2024-02-22T07:08",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "mars",
+        "jupiter"
+      ],
+      "lambdaUtc": "2024-08-14T15:31",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "saturn"
+      ],
+      "lambdaUtc": "2025-01-19T01:15",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "jupiter"
+      ],
+      "lambdaUtc": "2025-08-12T05:26",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "mercury",
+        "mars"
+      ],
+      "lambdaUtc": "2025-11-12T23:14",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "jupiter"
+      ],
+      "lambdaUtc": "2026-06-09T19:52",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "mars",
+        "jupiter"
+      ],
+      "lambdaUtc": "2026-11-16T06:00",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "saturn"
+      ],
+      "lambdaUtc": "2027-05-07T18:56",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "mars"
+      ],
+      "lambdaUtc": "2027-11-25T01:34",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "jupiter",
+        "saturn"
+      ],
+      "lambdaUtc": "2020-12-21T18:20",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "jupiter"
+      ],
+      "lambdaUtc": "2024-05-23T08:33",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "mercury",
+        "jupiter"
+      ],
+      "lambdaUtc": "2024-06-04T10:25",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "mars"
+      ],
+      "lambdaUtc": "2026-01-08T02:44",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "saturn",
+        "neptune"
+      ],
+      "lambdaUtc": "2026-02-20T17:25",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "mars",
+        "saturn"
+      ],
+      "lambdaUtc": "2026-04-19T22:44",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "venus",
+        "jupiter"
+      ],
+      "lambdaUtc": "2027-08-26T02:51",
+      "tolMinLambda": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/List_of_conjunctions_(astronomy)",
+      "note": "Wikipedia \"List of conjunctions (astronomy)\": times match Horizons apparent ecliptic-longitude conjunctions (research §0 \"WLC\"); λ-conjunction ±60 min = 1.5 × the measured 39 min (Saturn–Neptune 2026)"
+    },
+    {
+      "kind": "pair",
+      "bodies": [
+        "jupiter",
+        "saturn"
+      ],
+      "utc": "2020-12-21T18:20",
+      "tolMin": 60,
+      "basis": "apparent-almanac",
+      "source": "https://en.wikipedia.org/wiki/Great_conjunction",
+      "note": "Wikipedia \"Great conjunction\": \"The closest separation occurred on 21 December at 18:20 UTC\", \"6.1 arcminutes\" (apparent; HZA 18:27, HZG 18:11)",
+      "expect": {
+        "separationArcmin": 6.1,
+        "tolArcmin": 0.5
+      }
+    }
+  ]
+}

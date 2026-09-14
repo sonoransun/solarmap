@@ -1,0 +1,26 @@
+{
+  "name": "solarmap",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Solar Map \u2014 the planets' orientation across time, relative distances, notable alignments and theatrical faster-than-light fly-bys, in your browser.",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --outDir docs",
+    "test": "node --test",
+    "ephem": "node scripts/ephem.mjs",
+    "data:vsop87": "node scripts/build-vsop87.mjs",
+    "data:horizons": "node scripts/fetch-horizons.mjs",
+    "serve:docs": "python3 -m http.server 4173 --directory docs"
+  },
+  "dependencies": {
+    "three": "0.186.0"
+  },
+  "devDependencies": {
+    "vite": "8.3.0"
+  }
+}
