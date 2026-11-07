@@ -1,9 +1,10 @@
 // Photographic surface maps. Equirectangular 2K images from Solar System Scope (CC BY 4.0,
 // https://www.solarsystemscope.com/textures/ — "You may use, adapt, and share these textures for any purpose,
-// even commercially", attribution required; see the About panel and LICENSES.md).
+// even commercially", attribution required; see the About panel and LICENSES.md). The Moon map (2k_moon.jpg) is
+// from the same set (compiled from NASA LRO / Clementine imagery).
 //
 // Loading is asynchronous and optional: the scene starts with the procedural materials and each body is upgraded
-// in place as its image arrives, so first paint never waits on 7 MB of imagery.
+// in place as its image arrives, so first paint never waits on 8 MB of imagery.
 import { TextureLoader, SRGBColorSpace, RepeatWrapping, ClampToEdgeWrapping, LinearMipmapLinearFilter } from 'three';
 
 /** Files shipped in public/textures (copied to the site root by Vite). */
@@ -11,6 +12,7 @@ export const TEXTURE_FILES = Object.freeze({
   mercury: { map: '2k_mercury.jpg' },
   venus: { map: '2k_venus_atmosphere.jpg', surface: '2k_venus_surface.jpg' },
   earth: { map: '2k_earth_daymap.jpg', night: '2k_earth_nightmap.jpg', clouds: '2k_earth_clouds.jpg' },
+  moon: { map: '2k_moon.jpg' },
   mars: { map: '2k_mars.jpg' },
   jupiter: { map: '2k_jupiter.jpg' },
   saturn: { map: '2k_saturn.jpg', ring: '2k_saturn_ring_alpha.png' },
@@ -19,12 +21,17 @@ export const TEXTURE_FILES = Object.freeze({
   sun: { map: '2k_sun.jpg' },
 });
 
+/** Load order: the bodies a viewer is most likely to be looking at first. */
+export const TEXTURE_LOAD_ORDER = Object.freeze([
+  'earth', 'moon', 'saturn', 'jupiter', 'mars', 'sun', 'venus', 'mercury', 'uranus', 'neptune',
+]);
+
 /** Attribution shown in the About panel. */
 export const TEXTURE_CREDIT = Object.freeze({
   title: 'Solar System Scope planetary texture maps',
   licence: 'CC BY 4.0',
   url: 'https://www.solarsystemscope.com/textures/',
-  note: 'Compiled from NASA elevation and imagery data (Messenger, Magellan, Blue Marble, Viking, Cassini, Voyager).',
+  note: 'Compiled from NASA elevation and imagery data (Messenger, Magellan, Blue Marble, LRO/Clementine, Viking, Cassini, Voyager).',
 });
 
 /**
@@ -79,9 +86,7 @@ export function createTextureSet({ basePath = './textures/', anisotropy = 8, onL
     /** Load every image; resolves when all have settled (failures are non-fatal). */
     async load() {
       const jobs = [];
-      // Order matters only for perceived quality: the bodies a viewer is most likely to be looking at come first.
-      const order = ['earth', 'saturn', 'jupiter', 'mars', 'sun', 'venus', 'mercury', 'uranus', 'neptune'];
-      for (const id of order) {
+      for (const id of TEXTURE_LOAD_ORDER) {
         const spec = TEXTURE_FILES[id];
         if (!spec) continue;
         for (const [kind, file] of Object.entries(spec)) {

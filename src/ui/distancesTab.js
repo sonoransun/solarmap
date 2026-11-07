@@ -1,5 +1,6 @@
 // Distances tab: from the selected body (Earth when nothing is selected) to every other body — AU · M km · light-time,
-// sortable by distance or name; clicking a row sets the distance-beam partner (click again to clear).
+// sortable by distance or name; tapping a row sets the distance-beam partner (tap again to clear). The light-time
+// column is the lay reader's hook: "light takes 4 h 10 min to reach Neptune" says more than 30 AU.
 import { h, setText, setAttr, getFormat, bodyName, bodyColour, bodyIds } from './dom.js';
 import { AU_KM, LIGHT_TIME_AU_S } from '../astro/constants.js';
 
@@ -16,7 +17,7 @@ export function createDistancesTab({ el, actions, getProviders, requestRender })
   const btnSortAu = h('button', { type: 'button', 'aria-pressed': 'true', text: 'Distance', onclick: () => { sort = 'au'; refreshSort(); } });
   const btnSortName = h('button', { type: 'button', 'aria-pressed': 'false', text: 'Name', onclick: () => { sort = 'name'; refreshSort(); } });
   const title = h('h2', { text: 'From Earth' });
-  const hint = h('p', { class: 'footnote', text: 'Select a body (Bodies tab or keys 0–8) to measure from it. Click a row to draw the distance beam to that body.' });
+  const hint = h('p', { class: 'footnote', text: 'Distances are measured from Earth until you select another body (Bodies tab, or keys 0–8). Tap a row to draw a line to that body in the scene, with the distance written on it.' });
   const list = h('ul', { class: 'list', 'aria-label': 'Distances' });
   el.replaceChildren(
     title,
@@ -46,7 +47,7 @@ export function createDistancesTab({ el, actions, getProviders, requestRender })
       const rest = h('span', { class: 'val', text: '' });
       const btn = h('button', {
         class: 'row row-dist', type: 'button', 'aria-pressed': 'false',
-        'aria-label': `Distance to ${bodyName(providers, id)}; click to draw the distance beam`,
+        'aria-label': `Distance to ${bodyName(providers, id)}; activate to draw the distance line`,
         style: { '--c': bodyColour(providers, id) },
         onclick: (e) => {
           if (e.shiftKey) { actions.select?.(id); return; }

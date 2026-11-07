@@ -313,6 +313,13 @@ const DELTA_T_AT_EXPIRY_S = TT_MINUS_TAI_S + TAI_MINUS_UTC_LAST_S;
  *    checks: 64.184 s at 2000-01-01 vs USNO 63.83; 69.184 s at 2024-01-01 vs USNO 69.18).
  *  - jdUtc > expiry: 69.184 + (poly(y) − poly(y_expiry)) — the polynomial's slope continued from the last measured
  *    value (continuous at the expiry by construction; the raw polynomial over-predicts by ≈6.8 s), `assumed = true`.
+ *    Known limitation (six-lens review): the Espenak–Meeus 2005–2050 segment was fitted in 2006 to an expected
+ *    ΔT(2050) = 93 s, i.e. a slope of ≈ 0.6–0.7 s/yr, whereas the observed ΔT has been nearly flat since 2016
+ *    (IERS Bulletin A / USNO: 68.97 s at 2016.0, 69.18 s at 2020.0, 69.20 s at 2023.0, 69.11 s at 2026.0 — the Earth's
+ *    rotation sped up). The extrapolation therefore drifts high by ≈ 0.7 s per year after 2027-06-28, which is 0.03″ of
+ *    solar motion per year — invisible in the app, and flagged in the HUD by `assumed`. The behaviour is kept
+ *    (no published prediction beyond the Bulletin A one-year horizon is cited here); when the IERS table is refreshed,
+ *    LEAP_SECONDS / LEAP_TABLE_EXPIRES_JD move the continuity point forward and the drift resets.
  * @param {number} jdUtc
  * @param {DeltaT} [out] optional result object (no allocation in hot paths)
  * @returns {DeltaT}

@@ -9,6 +9,14 @@
 // Every mutation (setRate, play, pause, step, setJd) re-anchors from the current (clamped) jd, so the reading never jumps.
 // The clock is clamped to the plan's hard limit of −4000…+4000 (proleptic Gregorian years; plan §Time / critique
 // byf0bzyiw: "hard clamp of the clock/date input to −4000…+4000 with a toast").
+//
+// NaN policy: a NaN written into the anchor would poison every later reading (clamp(NaN) is NaN), so setJd / step /
+// createClock reject NaN with a RangeError and setRate rejects any non-finite rate; ±Infinity clamps to the limits like
+// any other out-of-range value. clamp() itself is NaN-free as a second line of defence.
+//
+// createRateRamp (below) is the ONE easing used for every sim-rate change (user presets, story chapters, the fly-by rate
+// cap and the follow-mode spin cap): a minimum-jerk ramp in symmetric-log rate space, so 1 d/s → 1 y/s feels like a
+// steady acceleration and a direction flip slows to a stop before running the other way.
 
 /** Sim days per real second for the timeline rate presets (research bgcq10pmt §6; plan §UI "RT·1h·1d·1w·1mo·1y·10y"). */
 export const RATES = Object.freeze({
@@ -130,6 +138,7 @@ export function createClock({
 } = {}) {
   if (!(maxJd > minJd)) throw new RangeError('createClock: maxJd must exceed minJd');
   if (!Number.isFinite(rate)) throw new RangeError('createClock: rate must be finite');
+  if (typeof jdUtc !== 'number' || Number.isNaN(jdUtc)) throw new RangeError('createClock: jdUtc must be a number, not NaN');
   let jdAnchor = clamp(jdUtc, minJd, maxJd);
   let tAnchor = now();
   let r = rate;
@@ -148,6 +157,7 @@ export function createClock({
     tAnchor = now();
   }
   function setJd(v) {
+    if (typeof v !== 'number' || Number.isNaN(v)) throw new RangeError('setJd: jd must be a number, not NaN');
     const c = clamp(v, minJd, maxJd);
     jdAnchor = c;
     tAnchor = now();
@@ -173,6 +183,7 @@ export function createClock({
     return on;
   }
   function step(days) {
+    if (typeof days !== 'number' || Number.isNaN(days)) throw new RangeError('step: days must be a number, not NaN');
     return setJd(jd() + days);
   }
   function atLimit() {
@@ -213,6 +224,131 @@ function defaultNow() {
   return p && typeof p.now === 'function' ? p.now() : Date.now();
 }
 
+/** min(max(v, lo), hi); NaN-free: a NaN (or any non-comparable) v yields lo instead of propagating. */
 function clamp(v, lo, hi) {
-  return v < lo ? lo : v > hi ? hi : v;
+  if (!(v >= lo)) return lo;
+  return v > hi ? hi : v;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Rate ramp
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Rate-ramp length, real seconds (contracts §"Clock rate ramp": min-jerk over 0.6 s). */
+export const RATE_RAMP_S = 0.6;
+/**
+ * Knee of the symmetric-log rate space: one sim second per real second (RATES.realtime). Above it the ramp is
+ * logarithmic in |rate| (equal factors per unit time); below it, linear through zero.
+ */
+export const RATE_RAMP_KNEE = RATES.realtime;
+
+/**
+ * Minimum-jerk profile s(u) = 10u³ − 15u⁴ + 6u⁵ (Flash & Hogan 1985, J. Neurosci. 5(7):1688,
+ * https://pubmed.ncbi.nlm.nih.gov/4020415/): zero velocity and acceleration at both ends. Same polynomial as flyby.js.
+ * @param {number} u normalised time, clamped to [0, 1]
+ * @returns {number} 0…1
+ */
+export function minJerk(u) {
+  if (!(u > 0)) return 0;
+  if (u >= 1) return 1;
+  return u * u * u * (u * (u * 6 - 15) + 10);
+}
+
+/**
+ * Bi-symmetric log transform of a signed rate (Webber 2012, "A bi-symmetric log transformation for wide-range data",
+ * Meas. Sci. Technol. 24(2):027001, https://doi.org/10.1088/0957-0233/24/2/027001; eq. 2 with C = 1/ln 10):
+ *   f(r) = sign(r) · log10(1 + |r| / knee)
+ * Continuous and strictly monotonic through zero; ≈ sign(r)·log10(|r|/knee) for |r| ≫ knee, ≈ r/(knee·ln 10) for |r| ≪ knee.
+ * A straight line in f between two rates of opposite sign passes exactly through zero, which is how the ramp "eases to
+ * a small rate, stops and flips" without a special case.
+ * @param {number} rate signed sim days per real second
+ * @param {number} [knee=RATE_RAMP_KNEE] rate at which the law changes from linear to logarithmic (> 0)
+ * @returns {number}
+ */
+export function symlog(rate, knee = RATE_RAMP_KNEE) {
+  return Math.sign(rate) * Math.log10(1 + Math.abs(rate) / knee);
+}
+
+/**
+ * Inverse of symlog: r = sign(f) · knee · (10^|f| − 1).
+ * @param {number} f
+ * @param {number} [knee=RATE_RAMP_KNEE]
+ * @returns {number} signed rate
+ */
+export function symlogInverse(f, knee = RATE_RAMP_KNEE) {
+  return Math.sign(f) * knee * (Math.pow(10, Math.abs(f)) - 1);
+}
+
+/**
+ * @typedef {object} RateRamp
+ * @property {(target: number, now?: number, seconds?: number) => void} to  start easing from `now` (default: the ramp's
+ *   last output, else the target itself) to `target`; a ramp already running is re-targeted from its current value, so
+ *   there is never a jump. After every to() the next update() returns a value (a zero-length ramp returns the target once).
+ * @property {(dt: number) => number|null} update  advance by dt real seconds; returns the rate to apply this frame or
+ *   null when idle. The final frame returns the target bit-exactly.
+ * @property {() => boolean} active  true while an update() will still return a value
+ * @property {() => void} cancel  stop where it is (nothing more is emitted; the clock keeps the last applied rate)
+ * @property {() => number} target  the rate being eased toward (NaN before the first to())
+ * @property {() => number} value  the last rate handed out by update(), or the start value (NaN before the first to())
+ */
+
+/**
+ * Create a sim-rate ramp: minimum-jerk in symlog(rate) over `seconds` (contracts §"Clock rate ramp"). Pure; the caller
+ * (main.js) feeds the returned rate to clock.setRate every frame. Rates between +knee and −knee are crossed linearly,
+ * so a flip from +1 d/s to −1 d/s decelerates in log space, sits near zero for a beat and accelerates away again.
+ * @param {object} [opts]
+ * @param {number} [opts.seconds=RATE_RAMP_S] default ramp length, real seconds (≥ 0; 0 = immediate)
+ * @param {number} [opts.knee=RATE_RAMP_KNEE] symlog knee (> 0)
+ * @returns {RateRamp}
+ */
+export function createRateRamp({ seconds = RATE_RAMP_S, knee = RATE_RAMP_KNEE } = {}) {
+  if (!Number.isFinite(seconds) || seconds < 0) throw new RangeError('createRateRamp: seconds must be finite and ≥ 0');
+  if (!Number.isFinite(knee) || !(knee > 0)) throw new RangeError('createRateRamp: knee must be finite and > 0');
+  let running = false; // a min-jerk ramp is in progress
+  let pending = false; // a single value (the target) is waiting to be emitted
+  let t = 0;
+  let length = seconds;
+  let f0 = 0;
+  let f1 = 0;
+  let goal = NaN;
+  let value = NaN;
+
+  function to(target, now = Number.isFinite(value) ? value : target, s = seconds) {
+    if (!Number.isFinite(target)) throw new RangeError('rateRamp.to: target must be finite');
+    if (!Number.isFinite(now)) throw new RangeError('rateRamp.to: now must be finite');
+    if (!Number.isFinite(s) || s < 0) throw new RangeError('rateRamp.to: seconds must be finite and ≥ 0');
+    goal = target;
+    if (now === target || s === 0) {
+      running = false; pending = true; value = target;
+      return;
+    }
+    f0 = symlog(now, knee);
+    f1 = symlog(target, knee);
+    length = s;
+    t = 0;
+    value = now;
+    running = true;
+    pending = false;
+  }
+  function update(dt) {
+    if (pending) { pending = false; return goal; }
+    if (!running) return null;
+    if (dt > 0) t += dt; // NaN / negative dt: no progress, no poison
+    const u = t / length;
+    if (u >= 1) { running = false; value = goal; return goal; }
+    value = symlogInverse(f0 + (f1 - f0) * minJerk(u), knee);
+    return value;
+  }
+  function cancel() {
+    running = false;
+    pending = false;
+  }
+  return {
+    to,
+    update,
+    cancel,
+    active: () => running || pending,
+    target: () => goal,
+    value: () => value,
+  };
 }

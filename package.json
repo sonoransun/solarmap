@@ -15,6 +15,9 @@
     "ephem": "node scripts/ephem.mjs",
     "data:vsop87": "node scripts/build-vsop87.mjs",
     "data:horizons": "node scripts/fetch-horizons.mjs",
+    "data:moon": "node scripts/fetch-moon.mjs",
+    "data:stars": "node scripts/build-stars.mjs",
+    "data:observer": "node scripts/fetch-observer.mjs",
     "serve:docs": "python3 -m http.server 4173 --directory docs"
   },
   "dependencies": {

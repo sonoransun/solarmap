@@ -1,0 +1,153 @@
+/* Solar Map — scene-space DOM (plain CSS). Everything the CSS2D layer draws over the canvas: body labels, grid labels,
+   the distance-beam chip, the alignment label, star names, plus the reduced-motion fade overlay on #stage.
+   Imported by src/styles.css (`@import './styles/scene.css';` — @import rules must come first in that file). All
+   sizes are CSS px.
+
+   Contract with three r186's CSS2DRenderer (labels.js, overlays.js, orbits.js, stars.js): the renderer writes each
+   element's inline `transform` (translate(-cx%, -cy%) translate(x, y)) every frame, so no rule here sets or
+   transitions `transform`; offsets are expressed through CSS2DObject.center. Class names are the ones the DOM
+   actually carries: .lbl / .lbl-dot / .lbl-text, .grid-lbl, .beam-chip (> .chip-main, > .chip-sub), .ovl-lbl, .star-lbl.
+   Every rule is scoped under .css2d-layer (the renderer's element, renderer.js) so an older `.lbl` rule elsewhere can
+   never override it, whatever the import order. */
+
+/* ---------- the layer ---------- */
+/* r186 CSS2DRenderer sets no pointer-events on its element → the layer is inert and only label buttons opt back in.
+   z-index 1 makes the layer its own stacking context, so the per-element z-index the renderer assigns (1…N) stays
+   inside it and the #stage::after fade (z-index 3, below) covers labels and canvas alike. */
+.css2d-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; z-index: 1; }
+.css2d-layer > * { pointer-events: none; }
+
+/* ---------- body labels ---------- */
+.css2d-layer .lbl {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  min-height: 28px;
+  margin: 0;
+  font: 500 12.5px/1.2 var(--font);
+  letter-spacing: .01em;
+  color: var(--text);
+  /* soft dark halo so the name reads over a bright limb or the Milky Way */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .95), 0 0 2px rgba(0, 0, 0, .9), 0 0 8px rgba(0, 0, 0, .75);
+  white-space: nowrap;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity var(--t-scene) var(--ease), background-color var(--t-micro) var(--ease);
+}
+.css2d-layer .lbl:hover { background: rgba(5, 7, 13, .55); }
+.css2d-layer .lbl:active { background: rgba(5, 7, 13, .75); }
+.css2d-layer .lbl:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.css2d-layer .lbl-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--c, var(--muted));
+  box-shadow: 0 0 6px var(--c, transparent);
+}
+.css2d-layer .lbl-text { display: inline-block; }
+/* beside a disc: no dot (the disc is the dot), a thin leader toward the limb on the left edge */
+.css2d-layer .lbl.is-limb { padding-left: 10px; }
+.css2d-layer .lbl.is-limb .lbl-dot { display: none; }
+.css2d-layer .lbl.is-limb::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 6px;
+  height: 1px;
+  background: var(--c, var(--muted));
+  opacity: .7;
+}
+.css2d-layer .lbl.is-selected { color: var(--accent-hover); }
+.css2d-layer .lbl.is-selected .lbl-dot { box-shadow: 0 0 0 2px rgba(122, 162, 255, .55), 0 0 8px var(--c, transparent); }
+.css2d-layer .lbl.is-selected.is-limb::before { background: var(--accent); opacity: 1; }
+.css2d-layer .lbl.is-hidden { opacity: 0; pointer-events: none; }
+
+/* ---------- grid distance labels (orbits.js: "1 AU", "5 AU" …) ---------- */
+.css2d-layer .grid-lbl {
+  pointer-events: none;
+  padding: 2px 4px;
+  font: 500 11px/1 var(--mono);
+  letter-spacing: .02em;
+  color: var(--faint);
+  text-shadow: 0 1px 2px #000, 0 0 4px #000;
+  white-space: nowrap;
+}
+
+/* ---------- distance beam chip (overlays.js) ---------- */
+.css2d-layer .beam-chip {
+  pointer-events: none;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 11px 5px;
+  font: 500 12px/1.25 var(--mono);
+  color: var(--text);
+  background: rgba(13, 17, 28, .9);
+  border: 1px solid rgba(122, 162, 255, .45);
+  border-radius: 999px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .45);
+  white-space: nowrap;
+}
+.css2d-layer .beam-chip .chip-main { color: var(--accent-hover); }
+.css2d-layer .beam-chip .chip-sub { font: 400 11px/1.2 var(--font); color: var(--muted); }
+.css2d-layer .beam-chip .chip-sub[hidden] { display: none; }
+
+/* ---------- alignment label (overlays.js: event caption at the centroid of the bodies) ---------- */
+.css2d-layer .ovl-lbl {
+  pointer-events: none;
+  max-width: min(60vw, 420px);
+  padding: 4px 11px;
+  font: 500 12.5px/1.3 var(--font);
+  letter-spacing: .01em;
+  color: var(--accent-hover);
+  background: rgba(5, 7, 13, .55);
+  border: 1px solid rgba(122, 162, 255, .3);
+  border-radius: 999px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .9);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: opacity var(--t-scene) var(--ease);
+}
+
+/* ---------- star names (stars.js, sky view) ---------- */
+.css2d-layer .star-lbl, .css2d-layer .star-name {
+  pointer-events: none;
+  padding: 1px 3px;
+  font: 400 11px/1 var(--font);
+  letter-spacing: .05em;
+  color: rgba(230, 234, 242, .72);
+  text-shadow: 0 1px 2px #000, 0 0 4px rgba(0, 0, 0, .9);
+  white-space: nowrap;
+  transition: opacity var(--t-scene) var(--ease);
+}
+
+/* ---------- reduced-motion fade (camera.js writes --fade 0…1 on #stage through rig.onFade) ---------- */
+/* #stage is made a stacking context so the overlay's z-index is scoped to the stage: it covers the canvas and the
+   label layer, never the HUD / toolbar / panel, which live outside #stage. */
+#stage { --fade: 0; isolation: isolate; }
+#stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: var(--bg, #05070D);
+  opacity: var(--fade, 0);
+  pointer-events: none;
+}
+
+/* coarse pointers: larger tap targets (the 44 px rule relaxed to 32 px for labels, which are dense) */
+@media (pointer: coarse) {
+  .css2d-layer .lbl { min-height: 32px; padding: 6px 10px; }
+  .css2d-layer .lbl.is-limb { padding-left: 11px; }
+}

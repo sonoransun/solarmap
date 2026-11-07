@@ -1,14 +1,16 @@
-// Warp star streaks: LineSegments sharing the star directions (2 vertices per star, aTail = 0 head / 1 tail).
-// The tail slides along the component of -uVelDir perpendicular to the star direction by aTail * uStreak, so
-// streak length ∝ sin(angle from the motion axis): a radial "vanishing point" with no per-star CPU work.
-// Additive, depthTest off. Research §3.6. uVelDir = unit camera velocity in WORLD space (the object is
-// centred on the camera with no rotation, so world == object direction).
+// Warp star streaks: LineSegments sharing every third star's direction (2 vertices per streak, aTail = 0 head /
+// 1 tail). The tail slides along the component of −uVelDir perpendicular to the star direction by aTail · uStreak,
+// so streak length ∝ sin(angle from the motion axis): a radial "vanishing point" with no per-star CPU work
+// (length law unchanged). Colour is the star's own linear colour × intensity (aColor from the sky bundle), so the
+// streaks of Sirius and Betelgeuse differ and the brightest heads are HDR (bloom). Thinning to every third star
+// (≈ 4 800 streaks instead of 10 000) is what turns the former "white noise" into readable motion.
+// Additive, premultiplied, depthTest off. uVelDir = unit camera velocity in WORLD space (the object is centred on
+// the camera with no rotation, so world == object direction).
 
 export const STREAK_VERTEX = /* glsl */ `
 #include <common>
 #include <logdepthbuf_pars_vertex>
 attribute float aTail;
-attribute float aMag;
 attribute vec3 aColor;
 uniform vec3 uVelDir;
 uniform float uStreak;
@@ -23,7 +25,7 @@ void main() {
   vec4 mv = modelViewMatrix * vec4(p, 1.0);
   gl_Position = projectionMatrix * mv;
   float boost = 0.75 + 0.25 * clamp(uPixelRatio, 1.0, 2.0);   // 1-px lines are thinner on HiDPI: brighten
-  vA = (1.0 - aTail) * aMag * boost * clamp(uStreak / 0.05, 0.0, 1.0);   // head bright, tail fades to 0
+  vA = (1.0 - aTail) * boost * clamp(uStreak / 0.05, 0.0, 1.0);   // head bright, tail fades to 0
   vC = aColor;
   #include <logdepthbuf_vertex>
 }

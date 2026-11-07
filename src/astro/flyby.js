@@ -1,6 +1,9 @@
 // Pure fly-by math (no DOM, no three.js): duration law, warp (log-speed) and min-jerk profiles, the arcing path
 // between MOVING endpoints, the true (path) speed for the HUD / light-speed beat, the arrival offset and the
 // sim-rate cap. Everything here works on plain [x, y, z] arrays in AU and real seconds.
+// The last section holds the camera-glide helpers shared by src/render/camera.js (glide duration law, zoom space,
+// bounding sphere, sky-view fov fit, frame-rate-independent OrbitControls damping, Esc deceleration law) so that the
+// rig's arithmetic is testable from test/ without three.js.
 //
 // Sources:
 //  - Plan §"Fly-by specification" (/Users/user/.claude/plans/implement-the-features-described-curried-spark.md):
@@ -15,6 +18,8 @@
 //  - Min-jerk polynomial: Flash & Hogan 1985, J. Neurosci. 5(7):1688, https://pubmed.ncbi.nlm.nih.gov/4020415/
 //  - Smootherstep 6x⁵ − 15x⁴ + 10x³: Perlin, "Improving Noise", SIGGRAPH 2002 (zero 1st and 2nd derivative at 0 and 1).
 //  - Rodrigues' rotation formula (rotation of a vector about a unit axis), e.g. Goldstein, Classical Mechanics §4.
+//  - Bounding sphere: Ritter 1990, "An efficient bounding sphere", Graphics Gems (Glassner ed.), pp. 301–303.
+//  - Zoom space log(tan(fov/2)): the camera's magnification is ∝ 1/tan(fov/2), so a lerp there is a constant-rate zoom.
 
 import { C_AU_S, DEG } from './constants.js';
 import { sub, dot, cross, normalize } from './vec.js';
@@ -496,4 +501,174 @@ export function rateCap(rateDaysPerS, T, periodDays) {
 export function easeRate(from, to, tSinceStart, easeS = RATE_EASE_S) {
   const k = minJerk(tSinceStart / easeS);
   return from + (to - from) * k;
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Camera glides (contracts §"Camera rig API additions"; used by src/render/camera.js)
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Glide duration bounds, real seconds (contracts: "viewPose duration scaled with the pose distance (0.8–2.2 s)"). */
+export const GLIDE_MIN_S = 0.8;
+export const GLIDE_MAX_S = 2.2;
+/** Travel effort is log-scaled: log10(1 + d/GLIDE_TRAVEL_REF_AU) reaches 1 (full effort) at GLIDE_TRAVEL_FULL_AU
+ *  (≈ the radius of Neptune's orbit, i.e. crossing the whole map). */
+export const GLIDE_TRAVEL_REF_AU = 0.01;
+export const GLIDE_TRAVEL_FULL_AU = 50;
+/** Zoom effort reaches 1 after this many decades of distance / magnification change. */
+export const GLIDE_ZOOM_FULL_DECADES = 3;
+
+/**
+ * Duration of a camera glide: GLIDE_MIN_S + (GLIDE_MAX_S − GLIDE_MIN_S) × the largest of three normalised efforts —
+ * travel log10(1 + d/0.01 AU)/log10(1 + 50/0.01), turn |angle|/π and zoom |decades|/3 — so a fixed 1.2 s from any pose
+ * (the critique's "whip pans") becomes 0.8 s for a nudge and 2.2 s for crossing the map or turning right round.
+ * With a min-jerk slerp the peak angular speed is 1.875·angle/T (minJerkDeriv max): 180° over 2.2 s peaks at 153°/s
+ * and 60° over 1.27 s at 89°/s.
+ * @param {{travelAu?: number, turnRad?: number, zoomDecades?: number}} p efforts (any may be omitted; NaN counts as 0)
+ * @returns {number} seconds in [GLIDE_MIN_S, GLIDE_MAX_S]
+ */
+export function glideDuration({ travelAu = 0, turnRad = 0, zoomDecades = 0 } = {}) {
+  const full = Math.log10(1 + GLIDE_TRAVEL_FULL_AU / GLIDE_TRAVEL_REF_AU);
+  const eTravel = travelAu > 0 ? Math.log10(1 + travelAu / GLIDE_TRAVEL_REF_AU) / full : 0;
+  const eTurn = Math.abs(turnRad) / Math.PI;
+  const eZoom = Math.abs(zoomDecades) / GLIDE_ZOOM_FULL_DECADES;
+  let e = Math.max(eTravel, eTurn > 0 ? eTurn : 0, eZoom > 0 ? eZoom : 0);
+  if (!(e >= 0)) e = 0;
+  return GLIDE_MIN_S + (GLIDE_MAX_S - GLIDE_MIN_S) * clamp(e, 0, 1);
+}
+
+/**
+ * Zoom space z = ln(tan(fov/2)). The pinhole magnification is ∝ 1/tan(fov/2), so equal steps in z are equal
+ * magnification ratios and a min-jerk lerp in z reads as one smooth zoom from 50° to 0.25° (a lerp in degrees would
+ * spend 90 % of its time wide and then dive). Vertical fov in radians, 0 < fov < π.
+ * @param {number} fovRad @returns {number}
+ */
+export function zoomFromFov(fovRad) {
+  return Math.log(Math.tan(fovRad / 2));
+}
+
+/**
+ * Inverse of zoomFromFov: fov = 2·atan(eᶻ).
+ * @param {number} z @returns {number} radians
+ */
+export function fovFromZoom(z) {
+  return 2 * Math.atan(Math.exp(z));
+}
+
+const _bsA = [0, 0, 0];
+const _bsB = [0, 0, 0];
+
+/**
+ * Approximate minimal bounding sphere of a point set (Ritter 1990, Graphics Gems pp. 301–303): start from the two
+ * mutually farthest points of a two-pass scan, then grow the sphere just enough to swallow each point still outside
+ * (centre shifts by (d − r)/2 toward the point, radius becomes (d + r)/2). Radius ≤ ~5 % above optimal, exact for
+ * 1 or 2 points; empty input gives radius 0 at the origin. Used by frameBodies().
+ * @param {ArrayLike<ArrayLike<number>>} points [x, y, z] arrays, AU
+ * @param {{center: number[], radius: number}} [out]
+ * @returns {{center: number[], radius: number}}
+ */
+export function boundingSphere(points, out = { center: [0, 0, 0], radius: 0 }) {
+  const c = out.center;
+  const n = points.length;
+  if (n === 0) { c[0] = 0; c[1] = 0; c[2] = 0; out.radius = 0; return out; }
+  const farthestFrom = (p, into) => {
+    let best = -1, bi = 0;
+    for (let i = 0; i < n; i++) {
+      const q = points[i];
+      const d = (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 + (q[2] - p[2]) ** 2;
+      if (d > best) { best = d; bi = i; }
+    }
+    into[0] = points[bi][0]; into[1] = points[bi][1]; into[2] = points[bi][2];
+    return into;
+  };
+  farthestFrom(points[0], _bsA); // y: farthest from x = points[0]
+  farthestFrom(_bsA, _bsB);      // z: farthest from y
+  c[0] = 0.5 * (_bsA[0] + _bsB[0]); c[1] = 0.5 * (_bsA[1] + _bsB[1]); c[2] = 0.5 * (_bsA[2] + _bsB[2]);
+  let r = 0.5 * Math.hypot(_bsB[0] - _bsA[0], _bsB[1] - _bsA[1], _bsB[2] - _bsA[2]);
+  for (let i = 0; i < n; i++) {
+    const q = points[i];
+    const dx = q[0] - c[0], dy = q[1] - c[1], dz = q[2] - c[2];
+    const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    if (d > r) {
+      const nr = 0.5 * (d + r);
+      const k = (d - r) / (2 * d); // shift the centre (d − r)/2 toward q
+      c[0] += dx * k; c[1] += dy * k; c[2] += dz * k;
+      r = nr;
+    }
+  }
+  out.radius = r;
+  return out;
+}
+
+/** Sky view fit (plan §Fly-by "Sky view"; contracts): every target ≥ SKY_TARGET_PX px of projected radius, groups
+ *  fit their angular spread with SKY_PAIR_MARGIN, fov never below SKY_MIN_FOV_RAD (0.25°) nor above SKY_MAX_FOV_RAD. */
+export const SKY_TARGET_PX = 40;
+export const SKY_PAIR_MARGIN = 1.35;
+export const SKY_MIN_FOV_RAD = 0.25 * DEG;
+export const SKY_MAX_FOV_RAD = 100 * DEG;
+
+/**
+ * Sky-view vertical field of view. Inverting pxRadius = R/d/tan(fov/2)·H/2 (plan §Rendering "Markers") gives
+ * tan(fov/2) ≤ R·H/(2·px·d) per target; the narrowest of those is widened to 2·spread·margin so a pair or group stays
+ * on screen, then clamped to [minFovRad, maxFovRad]. Without a viewport height (H ≤ 0) the pixel rule is skipped and
+ * the result starts from baseFovRad. Example (Great Conjunction, H = 900 px): Jupiter R = 4.67e-4 AU at 5.9 AU wants
+ * 0.102°, Saturn 0.048°, the 6′ pair spread wants 0.137° → clamped up to 0.25°, where Jupiter is ≈ 16 px and Saturn
+ * ≈ 8 px in radius (the old 10° floor left both below one pixel).
+ * @param {object} p
+ * @param {ArrayLike<{dist: number, rDisp: number, offAxisRad: number}>} p.targets distance from the camera (AU),
+ *   displayed radius (AU) and angle between the target direction and the view axis (rad)
+ * @param {number} [p.count=targets.length] how many leading entries of `targets` to use (callers reuse a scratch array)
+ * @param {number} p.H viewport height, CSS px
+ * @param {number} p.baseFovRad the camera's normal fov (upper start value)
+ * @param {number} [p.px=SKY_TARGET_PX] @param {number} [p.margin=SKY_PAIR_MARGIN]
+ * @param {number} [p.minFovRad=SKY_MIN_FOV_RAD] @param {number} [p.maxFovRad=SKY_MAX_FOV_RAD]
+ * @returns {number} radians
+ */
+export function skyFitFovRad({
+  targets, count = targets.length, H, baseFovRad, px = SKY_TARGET_PX, margin = SKY_PAIR_MARGIN,
+  minFovRad = SKY_MIN_FOV_RAD, maxFovRad = SKY_MAX_FOV_RAD,
+}) {
+  let tanHalf = Math.tan(baseFovRad / 2);
+  let spread = 0;
+  for (let i = 0; i < count; i++) {
+    const t = targets[i];
+    if (H > 0 && t.dist > 0 && t.rDisp > 0) tanHalf = Math.min(tanHalf, t.rDisp * H / (2 * px * t.dist));
+    if (t.offAxisRad > spread) spread = t.offAxisRad;
+  }
+  let fov = 2 * Math.atan(tanHalf);
+  if (count > 1 && spread > 0) fov = Math.max(fov, 2 * spread * margin);
+  return clamp(fov, minFovRad, maxFovRad);
+}
+
+/**
+ * OrbitControls (three r186) applies its damping once per update() call — `spherical += delta·f` then
+ * `delta *= (1 − f)`, OrbitControls.js lines 717–718 and 801–804 — independent of the deltaTime argument (which only
+ * scales autoRotate, lines 932–940). For the same feel at any frame rate the per-call factor must satisfy
+ * (1 − f(dt))^(1/dt) = (1 − f60)^60, i.e. f(dt) = 1 − (1 − f60)^(60·dt). The total travel Σ f(1 − f)^k = 1 is the
+ * same for every f, so only the time constant changes, never where the camera ends up.
+ * @param {number} f60 damping factor tuned for a 60 Hz frame (0 < f60 < 1)
+ * @param {number} dt this frame's real seconds (≥ 0)
+ * @returns {number} damping factor for this frame
+ */
+export function dampingForFrame(f60, dt) {
+  return 1 - Math.pow(1 - f60, 60 * (dt > 0 ? dt : 0));
+}
+
+/** Esc mid-flight: decelerate in place over at most CANCEL_DECEL_S, coasting ≤ CANCEL_COAST_FRACTION of the remaining
+ *  chord (plan §Fly-by "Arrival"; critique: keeps "in place" honest at 10³ c). */
+export const CANCEL_DECEL_S = 0.6;
+export const CANCEL_COAST_FRACTION = 0.25;
+
+/**
+ * Length of the Esc deceleration. v(t) = v0·(1 − minJerk(t/T_d)) travels v0·T_d/2, so T_d = min(0.6 s,
+ * 2·0.25·remaining/v0) keeps the coast within a quarter of the remaining chord WITHOUT touching v0: the speed is
+ * continuous at the cancel instant (the critique's one-frame speed drop came from clamping v0 instead of T_d).
+ * @param {number} speedAuPerS current true speed, AU per real second (≥ 0)
+ * @param {number} remainingAu distance still to go along the chord, AU (≥ 0)
+ * @param {number} [maxS=CANCEL_DECEL_S] @param {number} [coastFraction=CANCEL_COAST_FRACTION]
+ * @returns {number} seconds in [0, maxS]
+ */
+export function cancelDecelSeconds(speedAuPerS, remainingAu, maxS = CANCEL_DECEL_S, coastFraction = CANCEL_COAST_FRACTION) {
+  if (!(speedAuPerS > 0)) return maxS;
+  const byCoast = 2 * coastFraction * Math.max(remainingAu, 0) / speedAuPerS;
+  return Math.min(maxS, byCoast);
 }

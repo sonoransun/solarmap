@@ -12,6 +12,8 @@
 import { AU_KM, DAY_S, LIGHT_TIME_AU_S, RAD } from './constants.js';
 import { angleBetween, wrap2Pi } from './vec.js';
 import { PLANETS, BODIES } from './ephemeris.js';
+import { body } from './bodies.js';
+import { poleEcliptic } from './orientation.js';
 
 /** Number of bodies in the distance table (Sun + 8 planets) and the resulting number of unordered pairs (C(9,2) = 36). */
 export const DISTANCE_TABLE_BODIES = BODIES.length;
@@ -279,6 +281,69 @@ export function phaseAngleRad(S, id) {
 export function phaseAngleDeg(S, id) {
   return phaseAngleRad(S, id) * RAD;
 }
+
+/**
+ * Illuminated fraction of the disc k = (1 + cos i)/2 (Meeus eq. 41.1 / 48.1), i = phase angle. 1 at opposition,
+ * 0 at inferior conjunction; NaN for the Sun and the Earth.
+ * @param {States} S @param {string} id @returns {number} 0…1
+ */
+export function illuminatedFraction(S, id) {
+  return (1 + Math.cos(phaseAngleRad(S, id))) / 2;
+}
+
+/**
+ * Geocentric distance |P − E| in km ('sun' → the Earth–Sun distance; 'moon' when S.moon is present).
+ * @param {States} S @param {string} id @returns {number} km
+ */
+export function geocentricDistanceKm(S, id) {
+  geocentric(S, id, G);
+  return Math.hypot(G[0], G[1], G[2]) * AU_KM;
+}
+
+/**
+ * Apparent equatorial angular diameter 2·asin(a/Δ) of a body seen from the Earth's centre, degrees — a = equatorial
+ * radius (bodies.js, IAU 2015), Δ = geocentric distance (Meeus ch. 55 uses the same 2·asin form for the Moon; for the
+ * planets the small-angle 2a/Δ differs by < 1e-6″). NaN for the Earth.
+ * @param {States} S @param {string} id any body with a bodies.js entry ('sun', planets, 'moon' when present)
+ * @returns {number} degrees
+ */
+export function angularDiameterDeg(S, id) {
+  if (id === 'earth') return NaN;
+  return 2 * Math.asin(body(id).radiusEqKm / geocentricDistanceKm(S, id)) * RAD;
+}
+
+/** @param {States} S @param {string} id @returns {number} arcseconds (planets: 3″ … 66″; Sun ≈ 1920″) */
+export function angularDiameterArcsec(S, id) {
+  return angularDiameterDeg(S, id) * 3600;
+}
+
+/**
+ * @typedef {{earthDeg:number, sunDeg:number}} SubLatitudes
+ */
+
+/**
+ * Planetocentric latitudes of the sub-Earth and sub-solar points: the elevation of the Earth (resp. Sun) direction
+ * above the body's equatorial plane, +90° − angle(pole, direction) with the IAU north pole of date (orientation.js).
+ * For Saturn these are the ring-opening angles B (seen from Earth) and B′ (lit by the Sun) of the Astronomical
+ * Almanac / Meeus ch. 45 ("the Saturnicentric latitude of the Earth referred to the plane of the ring"); positive =
+ * the northern face is seen / lit. Planetocentric, not planetodetic: Horizons' ObsSub-LAT is planetodetic
+ * (tan φ_d = tan φ_c / (1 − f)², 12.2° vs 10° for Saturn) — test/photometry.test.mjs converts.
+ * @param {States} S heliocentric states
+ * @param {string} id planet id (not 'sun' / 'earth')
+ * @param {number} jdTT epoch of the pole
+ * @param {SubLatitudes} [out]
+ * @returns {SubLatitudes} degrees
+ */
+export function subLatitudes(S, id, jdTT, out = { earthDeg: 0, sunDeg: 0 }) {
+  const p = stateOf(S, id), e = stateOf(S, 'earth');
+  const pole = poleEcliptic(id, jdTT, POLE);
+  P2[0] = e.x - p.x; P2[1] = e.y - p.y; P2[2] = e.z - p.z; // body → Earth
+  P1[0] = -p.x; P1[1] = -p.y; P1[2] = -p.z;                 // body → Sun
+  out.earthDeg = 90 - angleBetween(pole, P2) * RAD;
+  out.sunDeg = 90 - angleBetween(pole, P1) * RAD;
+  return out;
+}
+const POLE = [0, 0, 0];
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Parades

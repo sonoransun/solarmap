@@ -8,10 +8,12 @@
 //  - GM: JPL DE440 astrodynamic parameters, https://ssd.jpl.nasa.gov/astro_par.html (planet *system* GMs for
 //    Mars–Neptune, as used by the Horizons barycentre ids 4–8)
 //  - Sidereal orbit periods: NSSDC planetary fact sheets, https://nssdc.gsfc.nasa.gov/planetary/factsheet/<body>fact.html
-//  - Rotational elements: IAU WGCCRE 2015 report Table 1 (pp. 8–9), identical in pck00011 (bhqes187e.txt §2)
+//  - Rotational elements: IAU WGCCRE 2015 report Table 1 (pp. 8–9), identical in pck00011 (bhqes187e.txt §2);
+//    the Moon from Table 2 (p. 10, "Recommended values for the direction of the north pole of rotation and the prime
+//    meridian of the satellites", unchanged since the 2009 report) = pck00011 BODY301_POLE_RA/DEC/PM + BODY301_NUT_PREC
 //  - Saturn rings: NSSDC Saturnian rings fact sheet, https://nssdc.gsfc.nasa.gov/planetary/factsheet/satringfact.html
 //  - Colours: stylised (bhqes187e.txt §6, "representative", informed by NSSDC geometric albedo); not measured values
-//  - Horizons ids: test/fixtures/README.md (199/299/399 planet centres, 4–8 system barycentres, 10 = Sun)
+//  - Horizons ids: test/fixtures/README.md (199/299/399 planet centres, 4–8 system barycentres, 10 = Sun, 301 = Moon)
 import { AU_KM, SUN_RADIUS_KM, GM_SUN_KM3_S2 } from './constants.js';
 
 /**
@@ -28,6 +30,7 @@ import { AU_KM, SUN_RADIUS_KM, GM_SUN_KM3_S2 } from './constants.js';
  * @property {[number, number]} alpha0 [α0 at J2000 (°), rate (°/century)] — north pole right ascension (ICRF)
  * @property {[number, number]} delta0 [δ0 at J2000 (°), rate (°/century)] — north pole declination (ICRF)
  * @property {[number, number]} w [W at J2000 (°), Ẇ (°/day)] — prime meridian angle from the node Q = α0 + 90°
+ * @property {number} [wQuad] quadratic term of W in °/day² (the Moon's −1.4e-12 d², IAU 2015 Table 2); 0 when absent
  * @property {{alpha0: PeriodicTerm[], delta0: PeriodicTerm[], w: PeriodicTerm[]}} [periodic] periodic terms (see PeriodicTerm)
  */
 
@@ -53,6 +56,7 @@ import { AU_KM, SUN_RADIUS_KM, GM_SUN_KM3_S2 } from './constants.js';
  * @property {number} priority label overlap priority (plan §Labels: Sun 10 … Neptune 2; higher wins)
  * @property {IauRotation|GmstRotation} rotation
  * @property {SaturnRings} [rings]
+ * @property {string} [parent] primary of a satellite ('earth' for the Moon); absent for the Sun and the planets
  */
 
 /**
@@ -96,11 +100,19 @@ export const SATURN_RINGS = Object.freeze({
   fRing: Object.freeze({ name: 'F', radiusKm: 139826, opticalDepth: 0.1, albedo: 0.6 }),
 });
 
-/** Bodies in display order (Sun outward). */
+/** Bodies in display order (Sun outward): the Sun and the eight planets — the primary list every layer iterates. */
 export const BODY_IDS = Object.freeze(['sun', 'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune']);
 
 /** The eight planets, Sun outward. */
 export const PLANET_IDS = Object.freeze(BODY_IDS.slice(1));
+
+/** The Moon's id (a satellite entry: not in BODY_IDS, so existing loops over the Sun + planets are unchanged). */
+export const MOON_ID = 'moon';
+
+/** Every body with a table entry: BODY_IDS followed by the Moon. */
+export const ALL_BODY_IDS = Object.freeze([...BODY_IDS, MOON_ID]);
+
+const PLANET_SET = new Set(PLANET_IDS);
 
 /**
  * The body table. IAU 2015 rotational elements are transcribed VERBATIM from Archinal et al. 2018 Table 1
@@ -380,6 +392,78 @@ export const BODIES = Object.freeze({
       }),
     }),
   }),
+
+  moon: Object.freeze({
+    id: 'moon',
+    name: 'Moon',
+    horizonsId: 301,
+    radiusEqKm: 1737.4, // pck00011 BODY301_RADII = (1737.4, 1737.4, 1737.4): the IAU Moon is a sphere (Table 5 mean radius)
+    radiusPolarKm: 1737.4,
+    gmKm3S2: 4902.800118, // DE440 astro_par GM_Moon
+    siderealOrbitDays: 27.321661, // moon.js MOON.siderealMonthDays (Meeus 47.1 rate + IAU 1976 precession); NSSDC 27.3217
+    colour: '#C8C8C8',
+    accent: '#8F8F8F',
+    priority: 8,
+    parent: 'earth',
+    rotation: Object.freeze({
+      model: 'iau',
+      // IAU 2015 Table 2, Moon (Archinal et al. 2018 p. 10; the mean Earth/polar axis frame, see footnote: "the
+      // expressions … are precise to about 150 m on the lunar surface"); arguments in DAYS:
+      //   α0 = 269.9949 + 0.0031 T − 3.8787 sin E1 − 0.1204 sin E2 + 0.0700 sin E3 − 0.0172 sin E4 + 0.0072 sin E6
+      //        − 0.0052 sin E10 + 0.0043 sin E13
+      //   δ0 = 66.5392 + 0.0130 T + 1.5419 cos E1 + 0.0239 cos E2 − 0.0278 cos E3 + 0.0068 cos E4 − 0.0029 cos E6
+      //        + 0.0009 cos E7 + 0.0008 cos E10 − 0.0009 cos E13
+      //   W  = 38.3213 + 13.17635815 d − 1.4e-12 d² + 3.5610 sin E1 + 0.1208 sin E2 − 0.0642 sin E3 + 0.0158 sin E4
+      //        + 0.0252 sin E5 − 0.0066 sin E6 − 0.0047 sin E7 − 0.0046 sin E8 + 0.0028 sin E9 + 0.0052 sin E10
+      //        + 0.0040 sin E11 + 0.0019 sin E12 − 0.0044 sin E13
+      //   E1 = 125.045 − 0.0529921 d,  E2 = 250.089 − 0.1059842 d,  E3 = 260.008 + 13.0120009 d,
+      //   E4 = 176.625 + 13.3407154 d, E5 = 357.529 + 0.9856003 d,  E6 = 311.589 + 26.4057084 d,
+      //   E7 = 134.963 + 13.0649930 d, E8 = 276.617 + 0.3287146 d,  E9 = 34.226 + 1.7484877 d,
+      //   E10 = 15.134 − 0.1589763 d,  E11 = 119.743 + 0.0036096 d, E12 = 239.961 + 0.1643573 d,
+      //   E13 = 25.053 + 12.9590088 d
+      // Verified against Horizons' MOON_ME sub-Earth point (test/moon-integration.test.mjs). Ẇ → 27.321582 d sidereal.
+      alpha0: [269.9949, 0.0031],
+      delta0: [66.5392, 0.0130],
+      w: [38.3213, 13.17635815],
+      wQuad: -1.4e-12,
+      periodic: Object.freeze({
+        alpha0: [
+          [-3.8787, 125.045, -0.0529921, 'd'], // sin E1
+          [-0.1204, 250.089, -0.1059842, 'd'], // sin E2
+          [+0.0700, 260.008, 13.0120009, 'd'], // sin E3
+          [-0.0172, 176.625, 13.3407154, 'd'], // sin E4
+          [+0.0072, 311.589, 26.4057084, 'd'], // sin E6
+          [-0.0052, 15.134, -0.1589763, 'd'], // sin E10
+          [+0.0043, 25.053, 12.9590088, 'd'], // sin E13
+        ],
+        delta0: [
+          [+1.5419, 125.045, -0.0529921, 'd'], // cos E1
+          [+0.0239, 250.089, -0.1059842, 'd'], // cos E2
+          [-0.0278, 260.008, 13.0120009, 'd'], // cos E3
+          [+0.0068, 176.625, 13.3407154, 'd'], // cos E4
+          [-0.0029, 311.589, 26.4057084, 'd'], // cos E6
+          [+0.0009, 134.963, 13.0649930, 'd'], // cos E7
+          [+0.0008, 15.134, -0.1589763, 'd'], // cos E10
+          [-0.0009, 25.053, 12.9590088, 'd'], // cos E13
+        ],
+        w: [
+          [+3.5610, 125.045, -0.0529921, 'd'], // sin E1
+          [+0.1208, 250.089, -0.1059842, 'd'], // sin E2
+          [-0.0642, 260.008, 13.0120009, 'd'], // sin E3
+          [+0.0158, 176.625, 13.3407154, 'd'], // sin E4
+          [+0.0252, 357.529, 0.9856003, 'd'], // sin E5
+          [-0.0066, 311.589, 26.4057084, 'd'], // sin E6
+          [-0.0047, 134.963, 13.0649930, 'd'], // sin E7
+          [-0.0046, 276.617, 0.3287146, 'd'], // sin E8
+          [+0.0028, 34.226, 1.7484877, 'd'], // sin E9
+          [+0.0052, 15.134, -0.1589763, 'd'], // sin E10
+          [+0.0040, 119.743, 0.0036096, 'd'], // sin E11
+          [+0.0019, 239.961, 0.1643573, 'd'], // sin E12
+          [-0.0044, 25.053, 12.9590088, 'd'], // sin E13
+        ],
+      }),
+    }),
+  }),
 });
 
 /**
@@ -409,7 +493,7 @@ export function flattening(id) {
   return (b.radiusEqKm - b.radiusPolarKm) / b.radiusEqKm;
 }
 
-/** @param {string} id @returns {boolean} true for the eight planets */
+/** @param {string} id @returns {boolean} true for the eight planets (false for the Sun and the Moon) */
 export function isPlanet(id) {
-  return id !== 'sun' && BODIES[id] !== undefined;
+  return PLANET_SET.has(id);
 }

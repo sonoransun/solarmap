@@ -169,3 +169,54 @@ test('periods and rates (Bodies tab / timeline labels)', () => {
   assert.equal(formatRate(3652.5), '10 y/s');
   assert.equal(formatRate(0), 'paused');
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Scientist readouts: RA h m s, Dec ° ′ ″, magnitude, arcseconds (workstream E)
+// ---------------------------------------------------------------------------------------------------------------------
+import { formatRa, formatDec, formatMag, formatArcsec } from '../src/astro/format.js';
+
+test('formatRa: degrees → "hh mm ss.s" (15° per hour), rounding carries, 24h wraps to 00h, NaN → —', () => {
+  assert.equal(formatRa(0), '00 00 00.0');
+  assert.equal(formatRa(15), '01 00 00.0');
+  assert.equal(formatRa(74.7398145), '04 58 57.6', 'Mars 2022-12-08 apparent RA (observer.json: 74.739814546°)');
+  assert.equal(formatRa(359.99999), '00 00 00.0', '359.99999° rounds to 24h 00m 00.0s → wraps to 00 00 00.0');
+  assert.equal(formatRa(359.9999), '00 00 00.0', '359.9999° = 23h 59m 59.976s → rounds to 24h 00m 00.0s → 00 00 00.0');
+  assert.equal(formatRa(359.9), '23 59 36.0');
+  assert.equal(formatRa(359.995), '23 59 58.8');
+  assert.equal(formatRa(-15), '23 00 00.0', 'negative degrees wrap');
+  assert.equal(formatRa(96.5606539, 2), '06 26 14.56', 'two decimals (Mars 2024-09-15 apparent RA 96.560653938°)');
+  assert.equal(formatRa(187.5, 0), '12 30 00');
+  assert.equal(formatRa(NaN), '—');
+});
+
+test('formatDec: "±dd° mm′ ss″" with an explicit sign and U+2212 minus, carries, decimals option', () => {
+  assert.equal(formatDec(24.9952685), '+24° 59′ 43″', 'Mars 2022-12-08 apparent Dec');
+  assert.equal(formatDec(-23.0328), '−23° 01′ 58″');
+  assert.equal(formatDec(0), '+00° 00′ 00″');
+  assert.equal(formatDec(-0.0001), '+00° 00′ 00″', 'a negative value that rounds to zero is not shown as −0');
+  assert.equal(formatDec(-0.0002), '−00° 00′ 01″');
+  assert.equal(formatDec(89.99999), '+90° 00′ 00″', 'rounding carries through minutes and degrees');
+  assert.equal(formatDec(23.4393, 1), '+23° 26′ 21.5″', 'one decimal: the J2000 obliquity 23°26′21.4″… (84381.448″)');
+  assert.equal(formatDec(-5.5, 2), '−05° 30′ 00.00″');
+  assert.equal(formatDec(NaN), '—');
+});
+
+test('formatMag: one decimal, U+2212 for negatives, no −0.0, optional suffix', () => {
+  assert.equal(formatMag(-2.94), '−2.9');
+  assert.equal(formatMag(5.68), '5.7');
+  assert.equal(formatMag(-0.04), '0.0', 'rounds to zero → no minus sign');
+  assert.equal(formatMag(-26.74, { suffix: true }), '−26.7 mag');
+  assert.equal(formatMag(1.234, { decimals: 2 }), '1.23');
+  assert.equal(formatMag(NaN), '—');
+});
+
+test('formatArcsec: ″ with one decimal, three below 1″, ′ from 60″, ° from 3600″', () => {
+  assert.equal(formatArcsec(31.75), '31.8″', 'Jupiter 2020-01-01 apparent diameter');
+  assert.equal(formatArcsec(0.0384), '0.038″', 'an astrometric residual');
+  assert.equal(formatArcsec(3.5), '3.5″', 'Uranus');
+  assert.equal(formatArcsec(1920), '32.0′', 'the Sun');
+  assert.equal(formatArcsec(1864.2), '31.1′', 'the Moon at mean distance');
+  assert.equal(formatArcsec(5472), '1.52°');
+  assert.equal(formatArcsec(-0.5), '-0.500″');
+  assert.equal(formatArcsec(NaN), '—');
+});

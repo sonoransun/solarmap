@@ -7,6 +7,10 @@
 // hash13: Dave Hoskins, "Hash without Sine" (https://www.shadertoy.com/view/4djSRW, MIT).
 // craters: jittered-lattice cellular placement with a cosine bowl and raised rim (original design, see the
 // rendering research §4.3).
+// Lighting helpers (planetDiffuse, twilightTint): wrap lighting after Green 2004, GPU Gems ch. 16 "Real-Time
+// Approximations to Subsurface Scattering" ((N·L + w)/(1 + w)); limb law after Minnaert 1941, ApJ 93, 403
+// (B = B0 · μ0^k · μ^(k−1), k = 1 is Lambert). Equirectangular lookups match SphereGeometry(…).rotateX(π/2)
+// (pole +Z, u = 0.5 on +X — see bodyView.js on the r186 sphere seam).
 
 export const PLANET_COMMON_GLSL = /* glsl */ `
 // ---- solarmap planet helpers -------------------------------------------------------------------------
@@ -94,6 +98,43 @@ vec2 craters(vec3 n, float freq, float seed) {
     }
   }
   return acc;
+}
+
+// ---- lighting helpers (surface materials; materials.js injects them after <lights_fragment_begin>) ----
+// Diffuse term replacing Lambert's N·L:
+//  - wrap lighting, (N·L + wrap)/(1 + wrap) (Green 2004, GPU Gems ch. 16): the terminator moves into the night
+//    side by 'wrap' and its gradient softens — a cheap stand-in for twilight scattering, so wrap ∝ atmosphere depth;
+//  - Minnaert limb law (Minnaert 1941, ApJ 93, 403): B = B0 · μ0^k · μ^(k−1) with μ0 = the wrapped N·L and
+//    μ = N·V. k = 1 is Lambert; k < 1 flattens the disc toward the limb the way the gas giants and Venus look
+//    (their k values in materials.js are stylised, not fitted). μ is floored at 0.2 so μ^(k−1) stays ≤ 1.4×.
+float planetDiffuse(float ndl, float ndv, float wrap, float k) {
+  float w = clamp((ndl + wrap) / (1.0 + wrap), 0.0, 1.0);
+  float mu = max(ndv, 0.2);
+  return pow(w, k) * pow(mu, k - 1.0);
+}
+
+// Twilight band: a Gaussian of width 'width' (in N·L) around the terminator blends the light colour toward the
+// sunset tint — the reddened light that reaches the ground at low Sun. Width and strength scale with the
+// atmosphere's depth in materials.js (a look, not a radiative-transfer result).
+vec3 twilightTint(float ndl, float width, vec3 tint, float strength) {
+  float band = exp(-(ndl * ndl) / (2.0 * width * width));
+  return mix(vec3(1.0), tint, band * strength);
+}
+
+// Equirectangular (u, v) of a unit direction in the sphere's object space: pole +Z, u = 0.5 on +X, matching
+// SphereGeometry(1, …).rotateX(PI/2) and three's vMapUv (bodyView.js explains the seam).
+vec2 planetEquirectUv(vec3 n) {
+  return vec2(atan(n.y, n.x) / 6.283185307179586 + 0.5, asin(clamp(n.z, -1.0, 1.0)) / 3.141592653589793 + 0.5);
+}
+
+// Mip level for an equirectangular sample at direction n (texWidth texels around the equator): a texel subtends
+// 2π/texWidth rad and |dn| per pixel is the angular footprint of a unit vector. Sampling with an explicit LOD
+// avoids the atan seam artefact (the derivative discontinuity at u = 0/1 would pick the coarsest mip along one
+// pixel column). Call in uniform control flow (dFdx/dFdy).
+float equirectLod(vec3 n, float texWidth) {
+  vec3 dn = max(abs(dFdx(n)), abs(dFdy(n)));
+  float footprint = max(dn.x, max(dn.y, dn.z));
+  return log2(max(footprint * texWidth / 6.283185307179586, 1e-6));
 }
 // ---- end solarmap planet helpers ---------------------------------------------------------------------
 `;

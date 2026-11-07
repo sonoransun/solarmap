@@ -3,21 +3,25 @@
 // (Horizons-derived Earth sub-solar fixtures) and the final critique byf0bzyiw.txt (measured residuals).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { SERIES, META } from '../src/astro/data/vsop87a.js';
 import { createEphemeris } from '../src/astro/ephemeris.js';
 import { ttFromUtc, utcFromTt, gmstDeg, jdFromCalendar } from '../src/astro/time.js';
-import { EQ_TO_ECL, ECL_TO_EQ, precessionMatrix } from '../src/astro/frames.js';
+import { nutation, nutationMatrix, gastDeg } from '../src/astro/nutation.js';
+import { EQ_TO_ECL, ECL_TO_EQ, precessionMatrix, precessionAngles } from '../src/astro/frames.js';
 import { mat3Mul, mat3T, mat3Apply, rotX, rotZ, wrap180, norm } from '../src/astro/vec.js';
-import { AU_KM, J2000, RAD, DEG } from '../src/astro/constants.js';
+import { AU_KM, J2000, RAD, DEG, ARCSEC_PER_RAD, C_AU_DAY } from '../src/astro/constants.js';
 import {
-  BODIES, BODY_IDS, PLANET_IDS, SATURN_RINGS, body, radiusAu, radiusPolarAu, flattening, isPlanet,
+  BODIES, BODY_IDS, PLANET_IDS, ALL_BODY_IDS, SATURN_RINGS, body, radiusAu, radiusPolarAu, flattening, isPlanet,
 } from '../src/astro/bodies.js';
 import {
-  rotationElements, poleRaDec, bodyToEcliptic, poleEcliptic, primeMeridianEcliptic, subSolarPoint,
+  rotationElements, poleRaDec, bodyToEcliptic, poleEcliptic, primeMeridianEcliptic, subSolarPoint, subEarthPoint,
   spinRateDegPerDay, isRetrograde, siderealRotationDays, siderealRotationHours, obliquityToOrbit,
 } from '../src/astro/orientation.js';
 
 const eph = createEphemeris(SERIES, { meta: META });
+const OBS = JSON.parse(readFileSync(new URL('./fixtures/horizons/observer.json', import.meta.url), 'utf8'));
+const RINGS = JSON.parse(readFileSync(new URL('./fixtures/horizons/saturn-rings-2025.json', import.meta.url), 'utf8'));
 const JD_2026_09_13 = 2461297.0; // 2026-09-13 12:00 (TT or UTC label, per test)
 const EPOCHS = [J2000, JD_2026_09_13, 2305448.0 /* 1600 */, 2634167.0 /* 2500 */, 260089.5 /* −4000 */, 3182395.5 /* +4000 */];
 
@@ -36,7 +40,9 @@ function assertClose(actual, expected, tol, msg) {
 test('bodies: table shape, ids, Horizons ids, priorities', () => {
   assert.deepEqual([...BODY_IDS], ['sun', 'mercury', 'venus', 'earth', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune']);
   assert.deepEqual([...PLANET_IDS], BODY_IDS.slice(1));
-  assert.deepEqual(Object.keys(BODIES), [...BODY_IDS], 'BODIES keys in display order');
+  assert.deepEqual(Object.keys(BODIES), [...BODY_IDS, 'moon'], 'BODIES keys in display order, the Moon last (test/moon-integration.test.mjs)');
+  assert.deepEqual([...ALL_BODY_IDS], [...BODY_IDS, 'moon']);
+  assert.equal(isPlanet('moon'), false);
   const horizons = { sun: 10, mercury: 199, venus: 299, earth: 399, mars: 4, jupiter: 5, saturn: 6, uranus: 7, neptune: 8 };
   const priority = { sun: 10, earth: 9, jupiter: 8, saturn: 7, mars: 6, venus: 5, mercury: 4, uranus: 3, neptune: 2 };
   for (const id of BODY_IDS) {
@@ -157,20 +163,39 @@ test('rotationElements: W advances by Ẇ per day (d in days, T in centuries), w
   assertClose(rotationElements('neptune', jdN90).delta0 * RAD, 43.46, 1e-6, 'Neptune δ0 at N = 90° = 43.46 − 0.51 cos 90°');
 });
 
-test('rotationElements / poleRaDec for Earth: IAU-form equivalent of GMST + precession', () => {
-  // At J2000 with UT1 = 12:00: P(0) = I, so α0 = 0, δ0 = 90°, W = GMST − 90° = 190.46061837° (Meeus 12.4 at J2000:
-  // 280.46061837°); the IAU 2009 expression's W0 = 190.147 is the known 0.31° bias (bhqes187e.txt §8).
+test('rotationElements / poleRaDec for Earth: exact IAU-form decomposition of precession + nutation + GAST', () => {
+  // At J2000 P(0) = I, so the pole is the TRUE pole of date expressed in the mean J2000 frame, Nᵀ·ẑ =
+  // (Δψ sin ε, Δε, 1) to first order with Δψ = −13.9″, Δε = −5.3″ → α0 = atan2(Δε, Δψ sin ε) ≈ 226°, δ0 = 90° − 7.8″.
+  const n0 = nutation(J2000);
   const e = rotationElements('earth', J2000, undefined, J2000);
-  assertClose(e.alpha0 * RAD, 0, 1e-12, 'Earth α0(J2000) = 0');
-  assertClose(e.delta0 * RAD, 90, 1e-12, 'Earth δ0(J2000) = 90°');
-  assertClose(e.W * RAD, 280.46061837 - 90, 1e-9, 'Earth W(J2000, UT1 = 12:00) = GMST − 90°');
-  // jdUT1 omitted → derived with utcFromTt (ΔT = 63.184 s at J2000 → GMST 0.263° smaller)
+  const dx = n0.dpsiRad * Math.sin(n0.trueObliquityRad), dy = n0.depsRad;
+  assertClose(e.alpha0 * RAD, (Math.atan2(dy, dx) * RAD + 360) % 360, 5e-3, 'Earth α0(J2000) = direction of the 7.8″ nutation offset (first order; second-order terms move the direction by ≈ 1e-3°)');
+  assertClose(e.delta0 * RAD, 90 - Math.hypot(dx, dy) * RAD, 1e-7, 'Earth δ0(J2000) = 90° − |nutation offset| (7.8″)');
+  // Without nutation W would be GMST − 90° = 190.46061837° (Meeus 12.4 at J2000: 280.46061837°; the IAU 2009 W0 =
+  // 190.147 is the known 0.31° bias, bhqes187e.txt §8). With the pole tilted 7.8″ the node Q = α0 + 90° of the true
+  // equator on the J2000 equator moves to RA 316°, and W, measured from that node, is GMST − 90° − α0 to first order
+  // (Greenwich sits at GAST from the TRUE equinox, which is itself displaced from the node by the equation of the
+  // equinoxes Δψ cos ε — the two cancel; measured 1e-5°).
+  const gast = gastDeg(J2000, J2000);
+  assertClose(wrap180(e.W * RAD - (gmstDeg(J2000) - 90 - e.alpha0 * RAD)), 0, 1e-4, 'Earth W(J2000, UT1 = 12:00) = GMST − 90° − α0 (first order)');
+  assertClose(wrap180((gast - gmstDeg(J2000)) * 3600), -12.8, 0.3, 'GAST − GMST at J2000 = Δψ cos ε = −12.8″');
+  // The elements reproduce the matrix exactly (checked below for several epochs); the IAU-form product must match.
+  const M2 = mat3Mul(EQ_TO_ECL, mat3Mul(rotZ(e.alpha0 + Math.PI / 2), mat3Mul(rotX(Math.PI / 2 - e.delta0), rotZ(e.W))));
+  assert.ok(maxAbsDiff(bodyToEcliptic('earth', J2000, J2000), M2) < 1e-12, 'IAU-form elements rebuild the Earth matrix at J2000');
+  // jdUT1 omitted → derived with utcFromTt (ΔT = 63.184 s at J2000 → GAST 0.263° smaller)
   const e2 = rotationElements('earth', J2000);
-  assertClose(e2.W * RAD, gmstDeg(utcFromTt(J2000)) - 90, 1e-9, 'Earth W defaults jdUT1 to utcFromTt(jdTT)');
-  // 2026: pole RA = −ζ_A = 359.828952°, Dec = 90° − θ_A = 89.851358° (frames.test: ζ 0.171048°, θ 0.148642°)
+  assertClose(wrap180((e2.W - e.W) * RAD - (gastDeg(utcFromTt(J2000), J2000) - gast)), 0, 1e-9, 'Earth W defaults jdUT1 to utcFromTt(jdTT)');
+  // 2026: the mean pole is at RA = −ζ_A = 359.828952°, Dec = 90° − θ_A = 89.851358° (frames.test: ζ 0.171048°,
+  // θ 0.148642°); the true pole differs from it by the nutation (≤ 17″ ≈ 0.0047°) — exact value from (N·P)ᵀ·ẑ.
   const p = poleRaDec('earth', JD_2026_09_13);
-  assertClose(p.raDeg, 360 - 0.171048, 2e-6, 'Earth pole RA 2026 = −ζ_A');
-  assertClose(p.decDeg, 90 - 0.148642, 2e-6, 'Earth pole Dec 2026 = 90° − θ_A');
+  const T = (JD_2026_09_13 - J2000) / 36525;
+  const truePole = mat3Apply(mat3T(mat3Mul(nutationMatrix(JD_2026_09_13), precessionMatrix(T))), [0, 0, 1]);
+  assertClose(p.raDeg, (Math.atan2(truePole[1], truePole[0]) * RAD + 360) % 360, 1e-9, 'Earth pole RA 2026 = true pole of date');
+  assertClose(p.decDeg, Math.asin(truePole[2]) * RAD, 1e-9, 'Earth pole Dec 2026 = true pole of date');
+  const { zeta, theta } = precessionAngles(T);
+  const meanPole = [Math.cos(Math.PI / 2 - theta) * Math.cos(-zeta), Math.cos(Math.PI / 2 - theta) * Math.sin(-zeta), Math.sin(Math.PI / 2 - theta)];
+  const tilt = Math.atan2(norm([truePole[1] * meanPole[2] - truePole[2] * meanPole[1], truePole[2] * meanPole[0] - truePole[0] * meanPole[2], truePole[0] * meanPole[1] - truePole[1] * meanPole[0]]), truePole[0] * meanPole[0] + truePole[1] * meanPole[1] + truePole[2] * meanPole[2]) * ARCSEC_PER_RAD;
+  assert.ok(tilt > 1 && tilt < 20, `true pole 2026 is ${tilt.toFixed(2)}″ from the mean pole (nutation, ≤ 17.5″)`);
   assertClose(poleRaDec('mars', J2000).raDeg, 317.680854, 1e-5, 'poleRaDec Mars');
 });
 
@@ -227,35 +252,46 @@ test('north poles in the ecliptic frame at J2000 to 2e-6 (bhqes187e.txt §8 tabl
   };
   for (const id of BODY_IDS) {
     const p = poleEcliptic(id, J2000);
-    assert.ok(maxAbsDiff(p, expected[id]) < 2e-6, `${id} pole ${p.map((x) => x.toFixed(6))} vs ${expected[id]} (plan tol 2e-6)`);
+    // Earth: the table value is the MEAN pole; the true pole of date differs by the nutation at J2000 (7.8″ = 3.8e-5)
+    const tol = id === 'earth' ? 4e-5 : 2e-6;
+    assert.ok(maxAbsDiff(p, expected[id]) < tol, `${id} pole ${p.map((x) => x.toFixed(6))} vs ${expected[id]} (plan tol 2e-6; Earth: + nutation ≤ 4e-5)`);
     assertClose(norm(p), 1, 1e-14, `${id} pole is a unit vector`);
   }
-  // Earth at J2000 is exactly the J2000 north celestial pole in the ecliptic frame: EQ_TO_ECL · ẑ = (0, sin ε, cos ε)
-  const ncp = mat3Apply(EQ_TO_ECL, [0, 0, 1]);
-  assert.ok(maxAbsDiff(poleEcliptic('earth', J2000), ncp) < 1e-15, 'Earth pole(J2000) = EQ_TO_ECL·ẑ (P(0) = I)');
+  // Earth at J2000 is the TRUE pole of date in the ecliptic frame: EQ_TO_ECL · N(J2000)ᵀ · ẑ (P(0) = I)
+  const ncp = mat3Apply(EQ_TO_ECL, mat3Apply(mat3T(nutationMatrix(J2000)), [0, 0, 1]));
+  assert.ok(maxAbsDiff(poleEcliptic('earth', J2000), ncp) < 1e-15, 'Earth pole(J2000) = EQ_TO_ECL·Nᵀ·ẑ (P(0) = I)');
+  const meanNcp = mat3Apply(EQ_TO_ECL, [0, 0, 1]);
+  const nut = Math.atan2(norm([ncp[1] * meanNcp[2] - ncp[2] * meanNcp[1], ncp[2] * meanNcp[0] - ncp[0] * meanNcp[2], ncp[0] * meanNcp[1] - ncp[1] * meanNcp[0]]), ncp[0] * meanNcp[0] + ncp[1] * meanNcp[1] + ncp[2] * meanNcp[2]) * ARCSEC_PER_RAD;
+  assertClose(nut, 7.8, 0.3, 'true pole at J2000 is 7.8″ from the mean pole (Δψ sin ε = −5.5″, Δε = −5.3″)');
   // Uranus's pole lies 82.28° from ecliptic north (the IAU north pole is the invariable-plane-north one; not flipped)
   assertClose(Math.acos(poleEcliptic('uranus', J2000)[2]) * RAD, 82.278, 1e-3, 'Uranus pole 82.278° from ecliptic north');
 });
 
-test('Earth: matrix form EQ_TO_ECL·P(T)ᵀ·R_z(GMST) equals the IAU-form elements and puts Greenwich at RA = GMST of date', () => {
+test('Earth: matrix form EQ_TO_ECL·P(T)ᵀ·N(T)ᵀ·R_z(GAST) equals the IAU-form elements and puts Greenwich at RA = GAST from the true equinox of date', () => {
   for (const jdTT of [J2000, JD_2026_09_13, 2305448.0, 2634167.0]) {
     const jdUT1 = utcFromTt(jdTT);
     const M = bodyToEcliptic('earth', jdTT, jdUT1);
     const e = rotationElements('earth', jdTT, undefined, jdUT1);
     const M2 = mat3Mul(EQ_TO_ECL, mat3Mul(rotZ(e.alpha0 + Math.PI / 2), mat3Mul(rotX(Math.PI / 2 - e.delta0), rotZ(e.W))));
-    assert.ok(maxAbsDiff(M, M2) < 1e-12, `Earth IAU-form elements reproduce the GMST+precession matrix @ ${jdTT} (max |Δ| ${maxAbsDiff(M, M2)})`);
-    // Greenwich (column 1) carried to the mean equator/equinox of date with P(T) must sit at RA = GMST(UT1) exactly
+    assert.ok(maxAbsDiff(M, M2) < 1e-12, `Earth IAU-form elements reproduce the GAST+nutation+precession matrix @ ${jdTT} (max |Δ| ${maxAbsDiff(M, M2)})`);
+    // Greenwich (column 1) carried to the TRUE equator/equinox of date with N(T)·P(T) must sit at RA = GAST exactly,
+    // and at GMST + Δψ cos ε (the equation of the equinoxes, ≤ 1.1 s of time).
     const T = (jdTT - J2000) / 36525;
-    const pmDate = mat3Apply(precessionMatrix(T), mat3Apply(ECL_TO_EQ, primeMeridianEcliptic('earth', jdTT, jdUT1)));
+    const NP = mat3Mul(nutationMatrix(jdTT), precessionMatrix(T));
+    const pmDate = mat3Apply(NP, mat3Apply(ECL_TO_EQ, primeMeridianEcliptic('earth', jdTT, jdUT1)));
     const raDate = Math.atan2(pmDate[1], pmDate[0]) * RAD;
-    assertClose(wrap180(raDate - gmstDeg(jdUT1)), 0, 1e-9, `Greenwich RA of date = GMST @ ${jdTT} (Pᵀ undone by P)`);
-    // and the mean pole of date is column 3
-    const poleDate = mat3Apply(precessionMatrix(T), mat3Apply(ECL_TO_EQ, poleEcliptic('earth', jdTT)));
-    assert.ok(maxAbsDiff(poleDate, [0, 0, 1]) < 1e-12, `Earth pole = mean pole of date @ ${jdTT}`);
+    assertClose(wrap180(raDate - gastDeg(jdUT1, jdTT)), 0, 1e-9, `Greenwich RA of date = GAST @ ${jdTT} (Pᵀ Nᵀ undone by N P)`);
+    const eqEq = nutation(jdTT).eqEquinoxRad * RAD;
+    assertClose(wrap180(raDate - gmstDeg(jdUT1) - eqEq), 0, 1e-9, `GAST − GMST = Δψ cos ε @ ${jdTT} (${(eqEq * 240).toFixed(3)} s of time)`);
+    assert.ok(Math.abs(eqEq) < 0.0053, 'equation of the equinoxes below 19″ (1.3 s)');
+    // and the true pole of date is column 3
+    const poleDate = mat3Apply(NP, mat3Apply(ECL_TO_EQ, poleEcliptic('earth', jdTT)));
+    assert.ok(maxAbsDiff(poleDate, [0, 0, 1]) < 1e-12, `Earth pole = true pole of date @ ${jdTT}`);
   }
-  // J2000, UT1 = 12:00 exactly: Greenwich at RA = GMST(J2000) = 280.46061837° in the J2000 frame (P = I)
-  const pm = mat3Apply(ECL_TO_EQ, primeMeridianEcliptic('earth', J2000, J2000));
-  assertClose(wrap180(Math.atan2(pm[1], pm[0]) * RAD - 280.46061837), 0, 1e-9, 'Greenwich RA at J2000 = GMST = 280.46061837°');
+  // J2000, UT1 = 12:00 exactly: Greenwich at RA = GAST(J2000) = GMST + Δψ cos ε = 280.46061837° − 12.8″ in the true frame
+  const pm = mat3Apply(nutationMatrix(J2000), mat3Apply(ECL_TO_EQ, primeMeridianEcliptic('earth', J2000, J2000)));
+  assertClose(wrap180(Math.atan2(pm[1], pm[0]) * RAD - gastDeg(J2000, J2000)), 0, 1e-9, 'Greenwich RA at J2000 = GAST');
+  assertClose(wrap180(gastDeg(J2000, J2000) - 280.46061837) * 3600, -12.8, 0.3, 'GAST(J2000) − GMST(J2000) = Δψ cos ε = −12.8″');
   // jdUT1 omitted → utcFromTt(jdTT)
   assert.ok(maxAbsDiff(bodyToEcliptic('earth', JD_2026_09_13), bodyToEcliptic('earth', JD_2026_09_13, utcFromTt(JD_2026_09_13))) < 1e-15,
     'bodyToEcliptic(earth) defaults jdUT1 to utcFromTt(jdTT)');
@@ -303,10 +339,14 @@ test('obliquity to orbit (pole vs P×V from the ephemeris at J2000) vs NSSDC to 
 // Sub-solar point
 // ---------------------------------------------------------------------------------------------------------------------
 
-test('Earth sub-solar point vs Horizons-derived fixtures (0.02° lon / 0.01° lat) with the real ephemeris', () => {
+test('Earth sub-solar point vs Horizons-derived fixtures (0.012° lon / 0.005° lat) with the real ephemeris', () => {
   // bhqes187e.txt §9: Horizons apparent RA/Dec of the Sun at Greenwich minus GAST, confirmed by Sun elevation
   // 89.9987–89.9999° at the computed points. Critique byf0bzyiw.txt measured 0.0084/0.0049/0.0050° lon residuals
-  // (nutation, DUT1, frame bias neglected); this run: 0.0084/0.0053/0.0054° lon, 0.0002/0.0046/0.0020° lat.
+  // (nutation, DUT1, frame bias neglected). GMST-only run: 0.0084/0.0053/0.0054° lon, 0.0002/0.0046/0.0020° lat;
+  // with nutation + GAST (this file): 0.0076/0.0056/0.0055° lon, 0.0010/0.0028/0.0026° lat. The remaining ≈ 0.0056°
+  // of longitude is the Sun's aberration (20.5″ = 0.0057°) contained in the APPARENT fixture positions, which the
+  // geometric sub-solar point does not include. Tolerances tightened from the plan's 0.02°/0.01° to
+  // 0.012°/0.005° (≥ 1.3 × measured 0.0076° / 0.0028°).
   const fixtures = [
     { jdUtc: 2451545.0, label: '2000-01-01 12:00 UTC', lon: 0.820, lat: -23.033 },
     { jdUtc: 2460000.0, label: '2023-02-24 12:00 UTC', lon: 3.300, lat: -9.457 },
@@ -316,8 +356,8 @@ test('Earth sub-solar point vs Horizons-derived fixtures (0.02° lon / 0.01° la
     assert.equal(f.jdUtc, jdFromCalendar(...f.label.split(/[- :]/).slice(0, 5).map(Number)), `${f.label} JD label check`);
     const jdTT = ttFromUtc(f.jdUtc);
     const s = subSolarPoint('earth', eph.state('earth', jdTT), jdTT, f.jdUtc);
-    assertClose(s.lonDeg, f.lon, 0.02, `${f.label} sub-solar longitude (plan tol 0.02°; Horizons fixture)`);
-    assertClose(s.latDeg, f.lat, 0.01, `${f.label} sub-solar latitude (plan tol 0.01°; Horizons fixture)`);
+    assertClose(s.lonDeg, f.lon, 0.012, `${f.label} sub-solar longitude (tightened from the plan's 0.02°; Horizons fixture; ≈ 0.0056° is aberration)`);
+    assertClose(s.latDeg, f.lat, 0.005, `${f.label} sub-solar latitude (tightened from the plan's 0.01°; Horizons fixture)`);
     // Array positions and the out object work the same
     const st = eph.state('earth', jdTT);
     const out = { latDeg: 0, lonDeg: 0 };
@@ -358,8 +398,12 @@ test('spin sense: Earth −15.0°/h; Venus & Uranus sub-solar longitude increase
   assertClose(wrap180(lonAt('mars', 0.01) - lonAt('mars', 0)), -(350.891982 - 360 / 686.98) * 0.01, 0.02, 'Mars ≈ −(Ẇ − n) × 0.01 d');
 });
 
-test('Saturn ring-plane crossing seen from Earth within ±1.5 d of 2025-03-23 (independent pole check)', { skip: 'gated by the plan: enable once the published date is confirmed in test/fixtures/README.md (measured here: 2025-03-23 17:25 UTC, +0.73 d)' }, () => {
-  // Earth crosses Saturn's equatorial plane when (E − S) · pole_saturn changes sign.
+test('Saturn ring-plane crossing seen from Earth: 2025-03-23 within ±1.5 d (plan) and within 0.05 d of the Horizons sub-Earth-latitude sign change (independent pole check)', () => {
+  // Gate lifted: the published date (2025 March 23) is confirmed by test/fixtures/horizons/saturn-rings-2025.json,
+  // Horizons' ObsSub-LAT of Saturn every 6 h in March–April 2025 changing sign at JD(TT) 2460758.2416 =
+  // 2025-03-23 17:48 TT (17:47 UTC). Earth crosses Saturn's equatorial plane when (E − S) · pole_saturn changes sign;
+  // the geometric instant here is 2025-03-23 17:25 UTC, 22 min before Horizons' light-time-corrected one (Saturn's
+  // 80-minute light-time shifts the apparent sub-Earth latitude by ≈ 0.001°, which the Earth covers in ≈ 15 min).
   const f = (jdUtc) => {
     const jdTT = ttFromUtc(jdUtc);
     const E = eph.state('earth', jdTT), S = eph.state('saturn', jdTT), p = poleEcliptic('saturn', jdTT);
@@ -368,5 +412,41 @@ test('Saturn ring-plane crossing seen from Earth within ±1.5 d of 2025-03-23 (i
   let a = jdFromCalendar(2025, 3, 1), b = jdFromCalendar(2025, 4, 15);
   assert.ok(f(a) * f(b) < 0, 'sign change in the window');
   for (let i = 0; i < 40; i++) { const m = (a + b) / 2; if (f(a) * f(m) <= 0) b = m; else a = m; }
-  assertClose((a + b) / 2, jdFromCalendar(2025, 3, 23, 12), 1.5, 'ring-plane crossing vs 2025-03-23 (plan tol ±1.5 d)');
+  const crossingUtc = (a + b) / 2;
+  assertClose(crossingUtc, jdFromCalendar(2025, 3, 23, 12), 1.5, 'ring-plane crossing vs 2025-03-23 (plan tol ±1.5 d)');
+  assert.ok(RINGS.rows.length > 150 && Number.isFinite(RINGS.crossingJdTT), 'fixture has the 6-hourly rows and the derived crossing');
+  const dDays = ttFromUtc(crossingUtc) - RINGS.crossingJdTT;
+  assert.ok(Math.abs(dDays) < 0.05, `geometric crossing ${(dDays * 1440).toFixed(1)} min from Horizons' apparent sub-Earth-latitude zero (|Δ| < 72 min; measured −22 min)`);
+  // The fixture's own sign change sits where the derived instant says
+  const before = RINGS.rows.filter((r) => r[0] < RINGS.crossingJdTT).pop(), after = RINGS.rows.find((r) => r[0] > RINGS.crossingJdTT);
+  assert.ok(before[2] * after[2] < 0 && after[0] - before[0] <= 0.25 + 1e-9, 'bracketing 6-hour samples have opposite signs');
+});
+
+test('sub-Earth points vs Horizons ObsSub-LON (quantity 14) for all seven planets: ≤ 0.02° with the body rotated at t − τ (light-time) and Horizons\' east/west convention', (t) => {
+  // Horizons prints planetodetic sub-observer longitudes WEST-positive for the prograde rotators and EAST-positive for
+  // Venus and Uranus ("{East-longitude positive}" in the fixture poleLine), evaluated with the body's rotation at the
+  // retarded time. Latitudes are compared planetocentrically in test/photometry.test.mjs. Measured maxima 2026-11-06:
+  // mercury ≈ 0.005°, venus 0.007°, mars 0.005°, jupiter/saturn/neptune < 0.01°, uranus 0.0005°.
+  const bodiesHz = ['mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
+  let worst = 0;
+  for (const id of bodiesHz) {
+    const east = /East-longitude positive/.test(OBS.bodies[id].poleLine);
+    assert.equal(east, id === 'venus' || id === 'uranus', `${id}: Horizons longitude convention follows the spin sense`);
+    for (const r of OBS.bodies[id].rows) {
+      if (r.subLonDeg === null) continue;
+      const E = eph.state('earth', r.jdTT), P = eph.state(id, r.jdTT);
+      const tau = Math.hypot(P.x - E.x, P.y - E.y, P.z - E.z) / C_AU_DAY;
+      const p = subEarthPoint(id, P, E, r.jdTT - tau);
+      const ours = east ? p.lonDeg : -p.lonDeg; // planetographic west = −east
+      const d = Math.abs(wrap180(ours - r.subLonDeg));
+      assert.ok(d < 0.02, `${id} JD ${r.jdTT}: sub-Earth longitude ${ours.toFixed(4)}° vs Horizons ${r.subLonDeg}° (|Δ| = ${d.toFixed(4)}° > 0.02°; IAU 2015 W)`);
+      worst = Math.max(worst, d);
+      // Without the light-time the fast rotators are visibly off (Jupiter 870°/d × 0.03 d ≈ 25°)
+      if (id === 'jupiter') assert.ok(Math.abs(wrap180(-subEarthPoint(id, P, E, r.jdTT).lonDeg - r.subLonDeg)) > 15, 'Jupiter at t (not t − τ) is > 15° off');
+    }
+  }
+  t.diagnostic(`max |Δ sub-Earth longitude| ${worst.toFixed(4)}°`);
+  const out = { latDeg: 0, lonDeg: 0 };
+  assert.equal(subEarthPoint('mars', [1.5, 0, 0], [1, 0, 0], J2000, undefined, out), out, 'writes into out; array positions accepted');
+  assert.ok(Number.isNaN(subEarthPoint('mars', [1, 0, 0], [1, 0, 0], J2000).lonDeg), 'coincident positions → NaN');
 });

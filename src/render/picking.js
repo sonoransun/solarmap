@@ -1,8 +1,14 @@
 // Screen-space picking of the Sun + 8 planets (plan §Project layout "picking.js: screen-space pick (14 px mouse /
 // 24 px touch; click vs drag 5 px)"; research bgcq10pmt §5.4). No raycaster: markers are constant pixel size, so the
-// nearest projected body within max(tol, pxRadius) wins. OrbitControls shares the canvas and captures the pointer on
-// pointerdown (r186 OrbitControls.js:1559), so pointerup always reaches the canvas; drags are filtered by the 5 px
-// threshold instead of by state.
+// nearest projected body within max(tol, pxRadius) wins.
+//
+// Pointer bookkeeping: OrbitControls captures the pointer on pointerdown only while it is ENABLED (r186
+// OrbitControls.js:1559). During fly-bys, glides and sky view the controls are disabled, so a press that is released
+// off-canvas never produces a canvas `pointerup`; a plain counter then stayed > 0 for ever and every later click was
+// treated as the second finger of a pinch. Active pointers are therefore kept in a Set keyed by pointerId and
+// released by WINDOW-level pointerup / pointercancel (capture phase, so a handler that stops propagation cannot hide
+// them), plus window blur and a hidden tab, which swallow the release entirely. The 5 px click-vs-drag threshold is
+// unchanged.
 
 import { Vector3 } from 'three';
 
@@ -19,6 +25,7 @@ const DOUBLE_PX = 12;
  * @typedef {object} Picker
  * @property {() => void} update   refresh the cached canvas rectangle (call after a resize; also done lazily per click)
  * @property {(x: number, y: number, tolPx?: number) => string|null} pickAt  pick at canvas-relative CSS px coordinates
+ * @property {() => number} activePointers  number of pointers currently pressed on the canvas (diagnostics)
  * @property {() => void} dispose
  */
 
@@ -33,13 +40,15 @@ const DOUBLE_PX = 12;
  * @param {(id: string) => void} o.onFly                     double-click / double-tap
  * @param {(id: string) => void} [o.onShiftSelect]           shift-click (distance beam partner)
  * @param {(id: string|null) => void} [o.onHover]            pointer moves over / off a body (mouse only)
+ * @param {(id: string) => boolean} [o.isPickable]           false excludes a body from the hit test this click (hidden Moon)
  * @param {HTMLElement|null} [o.ignoreFocusWithin]           retained for API compatibility; only text-entry controls
  *        (input/textarea/select/contenteditable) suppress picking, wherever they live
  * @returns {Picker}
  */
 export function createPicker({
   canvas, camera, ids, getWorldPosition, getPxRadius, onSelect, onFly, onShiftSelect = null, onHover = null,
-  ignoreFocusWithin = null,
+  isPickable = null,
+  ignoreFocusWithin = null, // eslint-disable-line no-unused-vars
 }) {
   const v = new Vector3();
   let rect = { left: 0, top: 0, width: 0, height: 0 };
@@ -48,7 +57,10 @@ export function createPicker({
   let press = null;
   let lastClick = { id: null, t: -Infinity, x: 0, y: 0 };
   let hovered = null;
-  let pointers = 0;
+  /** @type {Set<number>} pointer ids pressed on the canvas and not yet released anywhere */
+  const pointers = new Set();
+  const win = typeof window !== 'undefined' ? window : null;
+  const doc = typeof document !== 'undefined' ? document : null;
 
   function update() {
     rect = canvas.getBoundingClientRect();
@@ -81,6 +93,7 @@ export function createPicker({
     let best = null, bestScore = Infinity;
     for (let i = 0; i < ids.length; i++) {
       const id = ids[i];
+      if (isPickable && !isPickable(id)) continue; // e.g. the Moon while it is hidden inside Earth's disc
       if (!projectBody(id)) continue;
       const hit = Math.max(tolPx, getPxRadius(id) || 0);
       const d = Math.hypot(v.x - x, v.y - y);
@@ -92,9 +105,9 @@ export function createPicker({
   }
 
   function uiHasFocus() {
-    if (typeof document === 'undefined') return false;
-    const el = document.activeElement;
-    if (!el || el === document.body || el === canvas) return false;
+    if (!doc) return false;
+    const el = doc.activeElement;
+    if (!el || el === doc.body || el === canvas) return false;
     const tag = el.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable) return true;
     // A *button* inside the panel keeps focus after it is pressed (tab buttons, Go to, Follow …). Blocking canvas
@@ -112,8 +125,8 @@ export function createPicker({
   }
 
   function onPointerDown(e) {
-    pointers += 1;
-    if (pointers > 1) { if (press) press.moved = true; return; } // pinch / second finger → not a click
+    pointers.add(e.pointerId);
+    if (pointers.size > 1) { if (press) press.moved = true; return; } // pinch / second finger → not a click
     if (e.pointerType !== 'touch' && e.button !== 0) { press = null; return; }
     press = {
       id: e.pointerId, x: e.clientX, y: e.clientY, type: e.pointerType, button: e.button, shift: !!e.shiftKey,
@@ -132,12 +145,13 @@ export function createPicker({
     }
   }
 
+  /** Canvas pointerup: the click / double-click / shift-click decision. The window handler has already removed the id. */
   function onPointerUp(e) {
-    pointers = Math.max(0, pointers - 1);
+    pointers.delete(e.pointerId);
     if (!press || e.pointerId !== press.id) return;
     const p = press;
     press = null;
-    if (p.moved || pointers > 0) return;
+    if (p.moved || pointers.size > 0) return;
     if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > DRAG_PX) return;
     if (uiHasFocus()) return;
     const c = toCanvas(e, true);
@@ -160,9 +174,29 @@ export function createPicker({
     onSelect(id);
   }
 
-  function onPointerCancel() {
-    pointers = 0;
+  /** Window-level release (capture phase): forget the pointer wherever it was let go. A release that will still reach
+   *  the canvas keeps `press` so onPointerUp can turn it into a click; one that will not (off-canvas, no capture) drops it. */
+  function onWindowRelease(e) {
+    pointers.delete(e.pointerId);
+    if (press && e.pointerId === press.id) {
+      const t = e.target;
+      const reachesCanvas = t === canvas || (t && typeof canvas.contains === 'function' && canvas.contains(t));
+      if (!reachesCanvas || e.type === 'pointercancel') press = null;
+    }
+  }
+
+  function onPointerCancel(e) {
+    pointers.delete(e.pointerId);
+    if (press && e.pointerId === press.id) press = null;
+  }
+
+  /** Focus lost / tab hidden mid-press: the release will never arrive. */
+  function onLostInput() {
+    pointers.clear();
     press = null;
+  }
+  function onVisibility() {
+    if (doc && doc.hidden) onLostInput();
   }
 
   function onPointerLeave() {
@@ -174,7 +208,13 @@ export function createPicker({
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerCancel);
   canvas.addEventListener('pointerleave', onPointerLeave);
-  if (typeof window !== 'undefined') window.addEventListener('resize', update);
+  if (win) {
+    win.addEventListener('pointerup', onWindowRelease, true);
+    win.addEventListener('pointercancel', onWindowRelease, true);
+    win.addEventListener('blur', onLostInput);
+    win.addEventListener('resize', update);
+  }
+  if (doc) doc.addEventListener('visibilitychange', onVisibility);
 
   function dispose() {
     canvas.removeEventListener('pointerdown', onPointerDown);
@@ -182,8 +222,16 @@ export function createPicker({
     canvas.removeEventListener('pointerup', onPointerUp);
     canvas.removeEventListener('pointercancel', onPointerCancel);
     canvas.removeEventListener('pointerleave', onPointerLeave);
-    if (typeof window !== 'undefined') window.removeEventListener('resize', update);
+    if (win) {
+      win.removeEventListener('pointerup', onWindowRelease, true);
+      win.removeEventListener('pointercancel', onWindowRelease, true);
+      win.removeEventListener('blur', onLostInput);
+      win.removeEventListener('resize', update);
+    }
+    if (doc) doc.removeEventListener('visibilitychange', onVisibility);
+    pointers.clear();
+    press = null;
   }
 
-  return { update, pickAt, dispose };
+  return { update, pickAt, activePointers: () => pointers.size, dispose };
 }

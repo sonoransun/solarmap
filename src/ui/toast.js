@@ -1,15 +1,31 @@
 // Toast queue: one message at a time, 4 s each, role="status" aria-live="polite" (critique byf0bzyiw §aria).
+// `mute(on)` silences non-critical toasts (a running tour draws its own captions; spec-contracts.md §Story): muted
+// messages are handed to `onSuppressed` so the UI can still announce them to screen readers through its live region.
 import { setText } from './dom.js';
 
 /** Display time of one toast (ms). */
 export const TOAST_MS = 4000;
 
 /**
+ * @typedef {object} ToastOptions
+ * @property {'info'|'warn'|'success'} [kind='info']
+ * @property {number} [ms=TOAST_MS]
+ * @property {string} [key]        same key within 1.5 s → ignored (rate cap / spin cap re-fire while conditions persist)
+ * @property {boolean} [now=false] replace whatever is showing
+ * @property {boolean} [critical=false]  shown even while muted (warnings are always critical)
+ * @property {boolean} [muted=false]     per-call mute flag from main.js (same effect as mute(true) for this call)
+ */
+
+/**
  * @param {object} opts
  * @param {HTMLElement} opts.el  the #toast element (role=status, aria-live=polite are (re)asserted here)
- * @returns {{ show: (msg: string, opts?: { kind?: 'info'|'warn'|'success', ms?: number, key?: string, now?: boolean }) => void, clear: () => void, dispose: () => void }}
+ * @param {(msg: string, opts: ToastOptions) => void} [opts.onSuppressed]  receives messages dropped by the mute
+ * @returns {{
+ *   show: (msg: string, opts?: ToastOptions) => void, clear: () => void,
+ *   mute: (on?: boolean) => void, unmute: () => void, isMuted: () => boolean, dispose: () => void,
+ * }}
  */
-export function createToast({ el }) {
+export function createToast({ el, onSuppressed = null }) {
   el.setAttribute('role', 'status');
   el.setAttribute('aria-live', 'polite');
   el.setAttribute('aria-atomic', 'true');
@@ -18,6 +34,7 @@ export function createToast({ el }) {
   let timer = 0;
   let hideTimer = 0;
   let showing = false;
+  let muted = false;
   let lastKey;
   let lastAt = 0;
 
@@ -35,10 +52,19 @@ export function createToast({ el }) {
     }, item.ms);
   }
 
+  function clear() {
+    queue.length = 0;
+    clearTimeout(timer); clearTimeout(hideTimer);
+    showing = false;
+    el.classList.remove('is-visible');
+  }
+
   return {
-    show(msg, { kind = 'info', ms = TOAST_MS, key, now: immediate = false } = {}) {
+    show(msg, opts = {}) {
+      const { kind = 'info', ms = TOAST_MS, key, now: immediate = false, critical = false, muted: mutedCall = false } = opts;
       if (!msg) return;
-      // `now`: replace whatever is showing (guided-tour captions must track the step they belong to).
+      if ((muted || mutedCall) && !critical && kind !== 'warn') { onSuppressed?.(msg, opts); return; }
+      // `now`: replace whatever is showing (a caption must track the step it belongs to).
       if (immediate) {
         queue.length = 0;
         clearTimeout(timer); clearTimeout(hideTimer);
@@ -49,25 +75,22 @@ export function createToast({ el }) {
         return;
       }
       // Same keyed message within 1.5 s → ignore (rate cap and spin cap can re-fire while conditions persist).
-      const now = Date.now();
-      if (key && key === lastKey && now - lastAt < 1500) return;
-      lastKey = key; lastAt = now;
+      const t = Date.now();
+      if (key && key === lastKey && t - lastAt < 1500) return;
+      lastKey = key; lastAt = t;
       // Collapse duplicates already waiting.
       if (queue.some((q) => q.msg === msg)) return;
       if (queue.length >= 4) queue.shift();
       queue.push({ msg, kind, ms, key });
       if (!showing) next();
     },
-    clear() {
-      queue.length = 0;
-      clearTimeout(timer); clearTimeout(hideTimer);
-      showing = false;
-      el.classList.remove('is-visible');
-    },
+    clear,
+    /** Silence non-critical toasts (tours); muting also clears what is queued so stale messages never surface later. */
+    mute(on = true) { muted = !!on; if (muted) clear(); },
+    unmute() { muted = false; },
+    isMuted: () => muted,
     dispose() {
-      queue.length = 0;
-      clearTimeout(timer); clearTimeout(hideTimer);
-      el.classList.remove('is-visible');
+      clear();
     },
   };
 }

@@ -10,7 +10,7 @@ self.onmessage = (e) => {
   const msg = e.data;
   if (!msg) return;
   if (msg.type === 'init') {
-    eph = createEphemeris(msg.series);
+    eph = createEphemeris(msg.series, { moon: true }); // lunar kinds (eclipses, phases) need states.moon
     self.postMessage({ type: 'ready' });
     return;
   }

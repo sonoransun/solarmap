@@ -1,11 +1,13 @@
-// Fly-by tab: destination buttons (Sun + 8 planets), Launch, Tour, Cancel, and the live fly-by status
-// (progress, true speed in c with the light-speed beat, light-time to the target, profile kind).
+// Fly-by tab: what to do, not the profile maths. Destination buttons (Sun, planets, Moon when present), Launch,
+// Grand tour (the Planets story), Stop, and a live status card in plain words (where to, how fast against light,
+// how long light itself would take) with the scientific line (profile kind, τ, speed in c) in scientist mode.
 import { h, setText, setAttr, getFormat, bodyIds, bodyName, bodyColour } from './dom.js';
+import { speedWords, articled, SEP } from './copy.js';
 
 /**
  * @param {object} opts
  * @param {HTMLElement} opts.el
- * @param {object} opts.actions  { flyTo, tour, cancel, select }
+ * @param {object} opts.actions  { flyTo, playTour, tour, cancel, select }
  * @param {() => object|null} opts.getProviders
  * @param {() => void} [opts.requestRender]  ask the UI for a re-render after a local (non-store) change
  * @returns {{ update: (state: import('../app/state.js').AppState) => void, beat: () => void, dispose: () => void }}
@@ -18,29 +20,31 @@ export function createFlybyTab({ el, actions, getProviders, requestRender }) {
   const destButtons = new Map();
   const grid = h('div', { class: 'dest-grid', role: 'group', 'aria-label': 'Destination' });
 
-  const btnLaunch = h('button', { class: 'btn primary', type: 'button', text: 'Launch', 'aria-label': 'Launch fly-by to the destination', 'aria-keyshortcuts': 'F',
+  const btnLaunch = h('button', { class: 'btn primary', type: 'button', text: 'Launch', 'aria-label': 'Launch the flight to the destination', 'aria-keyshortcuts': 'F',
     onclick: () => { if (currentDest) actions.flyTo?.(currentDest); } });
-  const btnTour = h('button', { class: 'btn solar', type: 'button', text: 'Grand tour', 'aria-label': 'Grand tour: Earth, Mars, Jupiter, Saturn, Uranus, Neptune, Mercury, Venus, Sun, Earth',
-    onclick: () => actions.tour?.() });
-  const btnCancel = h('button', { class: 'btn danger', type: 'button', text: 'Cancel', 'aria-label': 'Cancel the fly-by or tour', 'aria-keyshortcuts': 'Escape',
+  const btnTour = h('button', { class: 'btn solar', type: 'button', text: 'Grand tour', 'aria-label': 'Grand tour of the planets: Sun to Neptune with a stop at each one',
+    'data-tip': 'Visit every planet in turn, with a fact at each stop',
+    onclick: () => { if (typeof actions.playTour === 'function') actions.playTour('planets'); else actions.tour?.(); } });
+  const btnCancel = h('button', { class: 'btn danger', type: 'button', text: 'Stop', 'aria-label': 'Stop the flight where it is', 'aria-keyshortcuts': 'Escape',
     onclick: () => actions.cancel?.() });
 
   const stTitle = h('div', { class: 'name', text: '' });
   const stSpeed = h('div', { class: 'big', text: '' });
   const stMeta = h('div', { class: 'muted', text: '' });
+  const stSci = h('div', { class: 'num muted sci-only', text: '' });
   const stBar = h('i');
-  const stProgress = h('span', { class: 'progress', role: 'progressbar', 'aria-label': 'Fly-by progress', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0' }, stBar);
-  const status = h('div', { class: 'fly-status', 'aria-live': 'off' }, stTitle, stSpeed, stMeta, h('div', { class: 'status-line', style: { marginTop: '8px' } }, stProgress));
+  const stProgress = h('span', { class: 'progress', role: 'progressbar', 'aria-label': 'Flight progress', 'aria-valuemin': '0', 'aria-valuemax': '100', 'aria-valuenow': '0' }, stBar);
+  const status = h('div', { class: 'fly-status', 'aria-live': 'off' }, stTitle, stSpeed, stMeta, stSci, h('div', { class: 'status-line', style: { marginTop: '8px' } }, stProgress));
   status.hidden = true;
 
-  const help = h('p', { class: 'footnote', text: 'Warp fly-bys follow a log-speed profile: about one second of visible sub-light departure and arrival with a peak of hundreds to thousands of c, arcing between the moving bodies. Short hops re-frame smoothly instead. Esc decelerates in place. Under reduced motion the camera fades and cuts.' });
-
   el.replaceChildren(
-    h('h2', { text: 'Destination' }),
+    h('h2', { text: 'Fly to a planet' }),
+    h('p', { class: 'lead', text: 'Pick a destination and press Launch. The camera eases away, outruns light many times over, and settles beside your planet — a trip that would take light itself minutes to hours.' }),
     grid,
     h('div', { class: 'btn-row' }, btnLaunch, btnTour, btnCancel),
     status,
-    help,
+    h('p', { class: 'footnote', text: 'Double-tap a destination to launch straight away. Esc stops the flight where it is. With reduced motion on, the view fades and cuts instead of flying.' }),
+    h('p', { class: 'footnote sci-only', text: 'Warp profile: log-speed with about one second of visible sub-light departure and arrival, arcing between the moving bodies; short hops re-frame with a min-jerk ease. The speed shown is the true camera speed along the path, in multiples of c.' }),
   );
 
   let currentDest = null;
@@ -70,29 +74,33 @@ export function createFlybyTab({ el, actions, getProviders, requestRender }) {
     const ids = bodyIds(providers);
     const key = ids.join(',');
     if (key !== idsKey) { idsKey = key; build(ids, providers); }
+    const nameOf = (id) => bodyName(providers, id);
 
     // Selecting a body elsewhere moves the destination with it; a destination chosen here sticks until then.
     if (s.selected && s.selected !== lastSelected) { dest = s.selected; }
     lastSelected = s.selected;
     currentDest = dest ?? s.selected ?? null;
     for (const [id, b] of destButtons) {
-      setText(b.name, bodyName(providers, id));
+      setText(b.name, nameOf(id));
       setAttr(b.btn, 'aria-pressed', currentDest === id ? 'true' : 'false');
     }
 
     const flying = s.cameraMode === 'flyby' || s.cameraMode === 'tour';
     btnLaunch.disabled = !currentDest || flying || (s.cameraMode === 'follow' && s.followed === currentDest);
-    setText(btnLaunch, currentDest ? `Launch → ${bodyName(providers, currentDest)}` : 'Launch');
-    btnTour.disabled = flying;
+    setText(btnLaunch, currentDest ? `Launch → ${nameOf(currentDest)}` : 'Launch');
+    btnTour.disabled = flying || !!s.story;
     btnCancel.disabled = !flying;
 
     const fb = s.flyby;
     status.hidden = !(flying && fb);
     if (flying && fb) {
-      setText(stTitle, `${s.cameraMode === 'tour' ? 'Tour leg' : 'Fly-by'} → ${bodyName(providers, fb.target)}${fb.from ? ` (from ${bodyName(providers, fb.from)})` : ''}`);
-      setText(stSpeed, f.speed(fb.speedC));
-      const lt = Number.isFinite(fb.lightMinutesToTarget) ? `light needs ${f.lightTime(fb.lightMinutesToTarget * 60)}` : '';
-      setText(stMeta, `${fb.kind === 'warp' ? 'Warp profile' : 'Re-frame (min-jerk)'}${lt ? ` · ${lt}` : ''}`);
+      setText(stTitle, `Flying to ${articled(fb.target, nameOf)}${fb.from ? ` from ${articled(fb.from, nameOf)}` : ''}`);
+      setText(stSpeed, speedWords(fb.speedC));
+      const lt = Number.isFinite(fb.lightMinutesToTarget) ? `light itself would need ${f.lightTime(fb.lightMinutesToTarget * 60)}` : '';
+      setText(stMeta, lt);
+      if (s.settings?.scientistMode) {
+        setText(stSci, `${fb.kind === 'warp' ? 'warp (log-speed)' : 'min-jerk re-frame'}${SEP}τ = ${Math.max(0, Math.min(1, fb.tau)).toFixed(2)}${SEP}${f.speed(fb.speedC)}`);
+      }
       const pct = Math.round(Math.max(0, Math.min(1, fb.tau)) * 100);
       stBar.style.width = `${pct}%`;
       setAttr(stProgress, 'aria-valuenow', String(pct));

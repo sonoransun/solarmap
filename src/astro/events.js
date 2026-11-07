@@ -14,7 +14,17 @@
 // brentRoot to 1e-6 d (≈ 0.09 s); extrema via brentMin; parade minima via a 3-point parabola (never Brent across
 // membership changes). The absolute grid alignment makes a chunked scan bit-identical to one scan (tested).
 // Off-grid evaluations (Brent iterates, alias-guard midpoints) compute only the bodies a detector needs.
-import { AU_KM, LIGHT_TIME_AU_S, RAD, SUN_RADIUS_KM } from './constants.js';
+//
+// Seasons, Moon and eclipses (seasons.js, moon.js, eclipses.js, apparent.js): the four seasons are the crossings of the
+// Sun's APPARENT longitude of date (nutation + aberration) through 0°/90°/180°/270° (Meeus ch. 27); lunar phases are the
+// crossings of the apparent-longitude difference Moon − Sun through 0°/90°/180°/270° (Meeus ch. 49 definition); solar
+// and lunar eclipses are searched only around each new/full Moon as the minimum of the shadow-axis distance (greatest
+// eclipse) and classified by Meeus ch. 54's limits; perigee/apogee are the zeros of the geocentric r·ṙ of the Moon.
+// The Moon is cheap (Meeus 47, ≈ 4 µs) and is memoised per grid day like the planets; the Earth's state at off-grid
+// instants of these Moon detectors is a second-order Taylor step from the nearest grid node (error < 15 km ≈ 0.02″ of
+// solar direction, 0.002 Earth radii of eclipse γ) instead of a 90 µs series evaluation, which keeps the whole lunar
+// block below 10 % of the scan (measured in test/eclipses.test.mjs).
+import { AU_KM, LIGHT_TIME_AU_S, RAD, SUN_RADIUS_KM, ARCSEC_PER_RAD, DAYS_PER_CENTURY, C_AU_DAY } from './constants.js';
 import { PLANETS, BODIES } from './ephemeris.js';
 import { utcFromTt } from './time.js';
 import { brentRoot, brentMin, scanBrackets, scanExtrema, parabolicExtremum } from './numeric.js';
@@ -22,16 +32,33 @@ import {
   helioLonDeltaSinCos, geoLonDeltaSinCos, elongationRad, elongationSide, separationRad, distanceAu,
   geocentricLongitudeRad, paradeArc, geocentricParade, PARADE_MIN_ELONGATION_DEG,
 } from './geometry.js';
+import { body } from './bodies.js';
+import { moonState, moonIllumination, moonAngularDiameterDeg } from './moon.js';
+import { apparentPlace, newApparentPlace, apparentSunLongitudeDeg } from './apparent.js';
+import { GM_SUN_AU3_D2 } from './elements.js';
+import { SEASON_KINDS, SEASON_LONGITUDE_DEG } from './seasons.js';
+import {
+  solarEclipseGeometry, lunarEclipseGeometry, classifySolar, classifyLunar, solarMagnitude, isCentral,
+  newSolarGeometry, newLunarGeometry,
+} from './eclipses.js';
+import { groupThousands } from './format.js';
 
 // ---------------------------------------------------------------------------------------------------------------------
 // Public constants
 // ---------------------------------------------------------------------------------------------------------------------
 
-/** Event kinds (plan §Events table rows; the Sun-relative row yields four kinds). */
+/** Lunar event kinds (Moon phases, apsides, eclipses). */
+export const LUNAR_KINDS = Object.freeze([
+  'moon-new', 'moon-first-quarter', 'moon-full', 'moon-last-quarter', 'moon-perigee', 'moon-apogee',
+  'solar-eclipse', 'lunar-eclipse',
+]);
+
+/** Event kinds (plan §Events table rows; the Sun-relative row yields four kinds) plus seasons and lunar kinds. */
 export const KINDS = Object.freeze([
   'opposition', 'conjunction', 'inferior-conjunction', 'superior-conjunction',
   'greatest-elongation', 'pair', 'closest-approach', 'perihelion', 'aphelion',
   'helio-parade', 'stationary', 'geo-parade',
+  ...SEASON_KINDS, ...LUNAR_KINDS,
 ]);
 
 /** Experimental classes (plan §Events: stationary points hidden below score 40; geocentric parade experimental). */
@@ -65,21 +92,41 @@ export const MERGE_WINDOWS_D = Object.freeze({
   'opposition': 30, 'conjunction': 30, 'inferior-conjunction': 30, 'superior-conjunction': 30,
   'greatest-elongation': 10, 'pair': 5, 'closest-approach': 20, 'perihelion': 20, 'aphelion': 20,
   'helio-parade': 0, 'stationary': 10, 'geo-parade': 0,
+  'equinox-march': 30, 'solstice-june': 30, 'equinox-september': 30, 'solstice-december': 30,
+  'moon-new': 5, 'moon-first-quarter': 5, 'moon-full': 5, 'moon-last-quarter': 5, 'moon-perigee': 10, 'moon-apogee': 10,
+  'solar-eclipse': 10, 'lunar-eclipse': 10,
 });
 /** Cap on walking an interval event (parade entry/exit) beyond the scan range, days; beyond it entry/exit = null. */
 export const MAX_INTERVAL_WALK_D = 366;
+/** Half-width of the greatest-eclipse search around a new/full Moon, days (conjunction → greatest eclipse ≤ ≈ 1 h). */
+export const ECLIPSE_SEARCH_HALF_WIDTH_D = 0.25;
+/** A full Moon closer than this is labelled a "supermoon" (perigee full Moon; a common popular threshold). */
+export const SUPERMOON_MAX_DIST_KM = 360000;
+/**
+ * Body order for sorting event bodies and the dedupe key: Sun, planets Sun-outward, then the Moon (so ['earth','moon']
+ * reads inside-out and the planet-only order of PLANETS is unchanged).
+ */
+export const BODY_ORDER = Object.freeze(['sun', ...PLANETS, 'moon']);
 
 /** Solar radius in AU (IAU 2015 nominal 695 700 km, constants.js) — transit threshold asin(R☉/|E|) ≈ 0.2665° at 1 AU. */
 const SUN_RADIUS_AU = SUN_RADIUS_KM / AU_KM;
 const INNER = new Set(['mercury', 'venus']);
 /** The seven planets other than Earth, Sun-outward. */
 const NON_EARTH = Object.freeze(PLANETS.filter((p) => p !== 'earth'));
-const ORDER_INDEX = new Map(PLANETS.map((p, i) => [p, i]));
+const ORDER_INDEX = new Map(BODY_ORDER.map((p, i) => [p, i]));
 const SUN_RELATIVE_KINDS = ['opposition', 'conjunction', 'inferior-conjunction', 'superior-conjunction'];
 const APSIS_KINDS = ['perihelion', 'aphelion'];
+const PHASE_KINDS = ['moon-new', 'moon-first-quarter', 'moon-full', 'moon-last-quarter'];
+const MOON_APSIS_KINDS = ['moon-perigee', 'moon-apogee'];
+const ECLIPSE_KINDS = ['solar-eclipse', 'lunar-eclipse'];
 const ROOT_OPTS = Object.freeze({ tol: ROOT_TOL_D });
 const MIN_OPTS = Object.freeze({ tol: MIN_TOL_D });
 const MINUTES_PER_DAY = 1440;
+/**
+ * IAU 1976 general precession in longitude at J2000, p = 5029.0966″ per Julian century (Lieske et al. 1977; Meeus 21.6
+ * linear term) in radians per day: the rate at which a longitude OF DATE exceeds the J2000 one (stationary points).
+ */
+const PRECESSION_RAD_PER_DAY = 5029.0966 / ARCSEC_PER_RAD / DAYS_PER_CENTURY;
 
 /**
  * @typedef {{x:number, y:number, z:number, vx:number, vy:number, vz:number}} State
@@ -103,6 +150,7 @@ function newState() {
  * @typedef {{
  *   g0: number, g1: number, n: number,
  *   day: (i: number) => States, at: (t: number, needs: readonly string[]) => States,
+ *   moonAt: (t: number) => State, earthNear: (t: number) => States,
  *   sc: {sin:number, cos:number}, minOut: {x:number, fx:number, evals:number},
  * }} Ctx
  */
@@ -158,7 +206,55 @@ function createContext(eph, jdTT0, jdTT1) {
     return scratch;
   }
 
-  return { g0, g1, n, day, at, sc: { sin: 0, cos: 0 }, minOut: { x: 0, fx: 0, evals: 0 } };
+  // Moon (moon.js, geocentric): memoised per grid day, scratch off-grid.
+  /** @type {Map<number, State>} */
+  const moonCache = new Map();
+  const moonScratch = newState();
+  let moonOffT = NaN;
+
+  /** Geocentric Moon state at t (grid nodes memoised). */
+  function moonAt(t) {
+    const i = t - g0;
+    if (i === Math.floor(i)) {
+      let m = moonCache.get(i);
+      if (m === undefined) {
+        m = moonState(t, newState());
+        moonCache.set(i, m);
+      }
+      return m;
+    }
+    if (t !== moonOffT) { moonState(t, moonScratch); moonOffT = t; }
+    return moonScratch;
+  }
+
+  // Earth near a grid node by a second-order Taylor step (two-body acceleration): E(t₀ + δ) ≈ E + V δ + ½ A δ²,
+  // A = −μ E/r³; |δ| ≤ 0.5 d → truncation (1/6)|J|δ³ ≲ 1e-7 AU (15 km), far below the planets' own 16 km residual.
+  const nearStates = { sun: newState(), earth: newState() };
+  let nearT = NaN;
+
+  /** {sun, earth} states at t for the Moon detectors (not the planets); exact at grid nodes. */
+  function earthNear(t) {
+    const i = t - g0;
+    if (i === Math.floor(i)) return day(i);
+    if (t === nearT) return nearStates;
+    nearT = t;
+    const i0 = Math.round(i);
+    const E = day(i0).earth;
+    const d = t - (g0 + i0);
+    const r = Math.hypot(E.x, E.y, E.z);
+    const k = -GM_SUN_AU3_D2 / (r * r * r);
+    const h = 0.5 * d * d;
+    const o = nearStates.earth;
+    o.x = E.x + E.vx * d + h * k * E.x;
+    o.y = E.y + E.vy * d + h * k * E.y;
+    o.z = E.z + E.vz * d + h * k * E.z;
+    o.vx = E.vx + d * k * E.x;
+    o.vy = E.vy + d * k * E.y;
+    o.vz = E.vz + d * k * E.z;
+    return nearStates;
+  }
+
+  return { g0, g1, n, day, at, moonAt, earthNear, sc: { sin: 0, cos: 0 }, minOut: { x: 0, fx: 0, evals: 0 } };
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -215,6 +311,19 @@ export function notabilityScore(kind, bodies, value) {
     }
     case 'stationary': s = p === 'mars' ? 35 : 25; break;
     case 'geo-parade': s = 50 + 8 * (value.n - GEO_PARADE_MIN_N); break;
+    // Seasons: four a year, universally meaningful — shown by the default filter (≥ 40) but below the rare alignments.
+    case 'equinox-march': case 'solstice-june': case 'equinox-september': case 'solstice-december': s = 45; break;
+    // Lunar phases: frequent, low (the Moon is always "doing something"); a perigee full Moon ("supermoon") stands out.
+    case 'moon-new': s = 15; break;
+    case 'moon-full': s = value.supermoon ? 35 : 20; break;
+    case 'moon-first-quarter': case 'moon-last-quarter': s = 10; break;
+    case 'moon-perigee': s = 12; break;
+    case 'moon-apogee': s = 8; break;
+    // Eclipses: total solar eclipses are the rarest spectacle; partial ones scale with the covered fraction.
+    case 'solar-eclipse':
+      s = value.type === 'total' ? 98 : value.type === 'hybrid' ? 95 : value.type === 'annular' ? 90 : 50 + 30 * clamp(value.magnitude, 0, 1);
+      break;
+    case 'lunar-eclipse': s = value.type === 'total' ? 75 : value.type === 'partial' ? 55 : 25; break;
     default: throw new RangeError(`events: unknown kind '${kind}'`);
   }
   return clamp(s, 0, 100);
@@ -249,11 +358,34 @@ export function labelFor(kind, bodies, value) {
     case 'helio-parade': return `${value.k} planets within ${value.arcDeg.toFixed(1)}° of heliocentric longitude`;
     case 'stationary': return `${n} stationary — retrograde ${value.phase === 'retrograde-start' ? 'begins' : 'ends'}`;
     case 'geo-parade': return `${value.n} planets in the ${value.side} sky`;
+    case 'equinox-march': return 'March equinox — day and night nearly equal; spring begins in the north, autumn in the south';
+    case 'solstice-june': return 'June solstice — the longest day in the north, the shortest in the south';
+    case 'equinox-september': return 'September equinox — day and night nearly equal; autumn begins in the north, spring in the south';
+    case 'solstice-december': return 'December solstice — the shortest day in the north, the longest in the south';
+    case 'moon-new': return 'New Moon';
+    case 'moon-first-quarter': return 'First quarter Moon';
+    case 'moon-full': return value.supermoon ? `Full Moon near perigee (a "supermoon"), ${groupThousands(value.distKm)} km away` : 'Full Moon';
+    case 'moon-last-quarter': return 'Last quarter Moon';
+    case 'moon-perigee': return `Moon at perigee (closest to Earth), ${groupThousands(value.distKm)} km`;
+    case 'moon-apogee': return `Moon at apogee (farthest from Earth), ${groupThousands(value.distKm)} km`;
+    case 'solar-eclipse':
+      switch (value.type) {
+        case 'total': return 'Total solar eclipse — the Moon covers the whole Sun along a narrow track';
+        case 'annular': return 'Annular solar eclipse — a ring of sunlight stays visible around the Moon';
+        case 'hybrid': return 'Hybrid solar eclipse — total along part of the track, annular elsewhere';
+        default: return `Partial solar eclipse — the Moon covers ${Math.round(value.magnitude * 100)}% of the Sun’s width at most`;
+      }
+    case 'lunar-eclipse':
+      switch (value.type) {
+        case 'total': return 'Total lunar eclipse — the full Moon turns copper-red inside Earth’s shadow';
+        case 'partial': return `Partial lunar eclipse — Earth’s shadow covers ${Math.round(value.umbralMagnitude * 100)}% of the Moon’s width`;
+        default: return 'Penumbral lunar eclipse — a faint shading of the full Moon';
+      }
     default: throw new RangeError(`events: unknown kind '${kind}'`);
   }
 }
 
-/** Sort body ids Sun-outward (PLANETS order) — the dedupe key and pair naming use this order. */
+/** Sort body ids Sun-outward (BODY_ORDER: Sun, planets, Moon) — the dedupe key and pair naming use this order. */
 function sortBodies(bodies) {
   return bodies.slice().sort((a, b) => ORDER_INDEX.get(a) - ORDER_INDEX.get(b));
 }
@@ -275,7 +407,7 @@ function isObservable(ctx, bodies, jdTT) {
   const S = ctx.at(jdTT, bodies.includes('earth') ? bodies : bodies.concat('earth'));
   for (let i = 0; i < bodies.length; i++) {
     const b = bodies[i];
-    if (b === 'earth') continue;
+    if (b === 'earth' || b === 'moon' || b === 'sun') continue; // lunar kinds pass their own flag (makeEvent)
     if (!(elongationRad(S, b) * RAD > OBSERVABLE_MIN_ELONGATION_DEG)) return false;
   }
   return true;
@@ -284,9 +416,11 @@ function isObservable(ctx, bodies, jdTT) {
 /**
  * Assemble an Event (plan: `{id, kind, bodies, jdTT, jdUtc, value:{…}, score 0–100, observable, label}`).
  * @param {Ctx} ctx @param {string} kind @param {string[]} bodies @param {number} jdTT @param {Record<string, any>} value
+ * @param {boolean} [observable] explicit flag for kinds whose visibility is not "every body > 10° from the Sun"
+ *   (eclipses are visible from Earth by definition; a new Moon is not)
  * @returns {Event}
  */
-function makeEvent(ctx, kind, bodies, jdTT, value) {
+function makeEvent(ctx, kind, bodies, jdTT, value, observable) {
   const sorted = sortBodies(bodies);
   return {
     id: eventKey(kind, sorted, jdTT),
@@ -296,7 +430,7 @@ function makeEvent(ctx, kind, bodies, jdTT, value) {
     jdUtc: utcFromTt(jdTT),
     value,
     score: notabilityScore(kind, sorted, value),
-    observable: isObservable(ctx, sorted, jdTT),
+    observable: observable === undefined ? isObservable(ctx, sorted, jdTT) : observable,
     label: labelFor(kind, sorted, value),
   };
 }
@@ -310,7 +444,9 @@ function makeEvent(ctx, kind, bodies, jdTT, value) {
  * cos Δλ > 0 → inner planet inferior conjunction / outer planet opposition; cos Δλ < 0 → superior conjunction /
  * conjunction. Value: elongation ψ and Earth distance at the crossing, plus the ψ extremum (brentMin within ±3 d:
  * maximum for oppositions, minimum otherwise) and, for inferior conjunctions, the transit flag
- * ψ_min < asin(R☉/|E|) ≈ 0.267° (research §A.6; final critique: "0.262–0.271°").
+ * ψ_min < asin(R☉/|E|) + asin(R_p/Δ): the discs overlap when the centres are closer than the sum of the solar
+ * semidiameter (≈ 0.267°, research §A.6; final critique: "0.262–0.271°") and the planet's own (Venus ≈ 30″, Mercury
+ * ≈ 6″ at inferior conjunction) — the grazing-transit case the six-lens review flagged.
  * @param {Ctx} ctx @param {Event[]} out
  */
 function detectSunRelative(ctx, out) {
@@ -344,10 +480,13 @@ function detectSunRelative(ctx, out) {
         jdUtcExtremum: utcFromTt(tExt),
       };
       if (kind === 'inferior-conjunction') {
-        const E = at(tExt, needs).earth;
+        const Sx = at(tExt, needs);
+        const E = Sx.earth;
         const limit = Math.asin(SUN_RADIUS_AU / Math.hypot(E.x, E.y, E.z)); // solar semidiameter seen from Earth
+        const semi = Math.asin(body(p).radiusEqKm / AU_KM / distanceAu(Sx, 'earth', p)); // planet's semidiameter
         value.transitLimitDeg = limit * RAD;
-        value.transit = psiExt < limit;
+        value.planetSemidiameterDeg = semi * RAD;
+        value.transit = psiExt < limit + semi;
       }
       out.push(makeEvent(ctx, kind, [p], t, value));
     }
@@ -543,8 +682,13 @@ function detectHelioParades(ctx, out) {
 }
 
 /**
- * Stationary points (experimental, plan row 7; Meeus ch. 36 2nd ed.): zero of g_x·ġ_y − g_y·ġ_x = (g × ġ)_z
- * ∝ dλ_geo/dt; + → − retrograde begins, − → + retrograde ends.
+ * Stationary points (experimental, plan row 7; Meeus ch. 36 2nd ed.): zero of dλ/dt of the APPARENT geocentric
+ * longitude of date — the quantity almanacs tabulate (the Horizons-derived fixture uses ObsEcLon). From the memoised
+ * states alone (no extra evaluations): g = P − E − τ V_P (first-order light-time, τ = |P − E|/c; the omitted ½τ²A term
+ * is < 2e-9 AU), ġ = V_P − V_E − τ A_P with the two-body A_P; the apparent direction u = ĝ + V_E/c (first-order
+ * aberration, Meeus 23.2) with u̇ = (ġ − ĝ(ĝ·ġ))/|g| + A_E/c; then dλ_date/dt ∝ (u × u̇)_z + p (u_x² + u_y²), p = the
+ * general precession rate (longitudes of date gain 50.29″/yr on J2000 ones). Light-time shifts the instant by τ
+ * (4–40 min), aberration by up to a few hours, precession by ≈ 2 min. + → − retrograde begins, − → + retrograde ends.
  * @param {Ctx} ctx @param {Event[]} out
  */
 function detectStationary(ctx, out) {
@@ -553,7 +697,21 @@ function detectStationary(ctx, out) {
     const needs = ['earth', p];
     const f = (t) => {
       const S = at(t, needs), P = S[p], E = S.earth;
-      return (P.x - E.x) * (P.vy - E.vy) - (P.y - E.y) * (P.vx - E.vx);
+      const gx0 = P.x - E.x, gy0 = P.y - E.y, gz0 = P.z - E.z;
+      const tau = Math.hypot(gx0, gy0, gz0) / C_AU_DAY;
+      const rP = Math.hypot(P.x, P.y, P.z), kP = -GM_SUN_AU3_D2 / (rP * rP * rP);
+      const rE = Math.hypot(E.x, E.y, E.z), kE = -GM_SUN_AU3_D2 / (rE * rE * rE);
+      // astrometric vector and its rate
+      const gx = gx0 - tau * P.vx, gy = gy0 - tau * P.vy, gz = gz0 - tau * P.vz;
+      const dgx = P.vx - E.vx - tau * kP * P.x, dgy = P.vy - E.vy - tau * kP * P.y, dgz = P.vz - E.vz - tau * kP * P.z;
+      const g = Math.hypot(gx, gy, gz);
+      const ux0 = gx / g, uy0 = gy / g, uz0 = gz / g;
+      const ug = ux0 * dgx + uy0 * dgy + uz0 * dgz;
+      // apparent direction (aberration) and its rate
+      const ux = ux0 + E.vx / C_AU_DAY, uy = uy0 + E.vy / C_AU_DAY;
+      const dux = (dgx - ux0 * ug) / g + kE * E.x / C_AU_DAY;
+      const duy = (dgy - uy0 * ug) / g + kE * E.y / C_AU_DAY;
+      return ux * duy - uy * dux + PRECESSION_RAD_PER_DAY * (ux * ux + uy * uy);
     };
     const brackets = scanBrackets(f, g0, g1, GRID_STEP_D);
     for (let i = 0; i < brackets.length; i++) {
@@ -620,6 +778,211 @@ function detectGeoParades(ctx, out) {
       out.push(makeEvent(ctx, 'geo-parade', members, g0 + peak + 0.5, value));
       i = Math.max(hi + 1, i + 1);
     }
+  }
+}
+
+/**
+ * Equinoxes and solstices (seasons.js; Meeus ch. 27): crossings of the Sun's apparent longitude of date λ☉ through
+ * 0°/90°/180°/270°, bracketed on the daily grid with sin(λ☉ − λ_k) (alias guard cos > 0 picks the wanted crossing of
+ * the two 180° apart) and refined by brentRoot on the exact ephemeris (the Earth only). Value: the Sun's apparent
+ * declination (±ε at the solstices, 0 at the equinoxes) and the Earth–Sun distance.
+ * @param {Ctx} ctx @param {Event[]} out
+ */
+function detectSeasons(ctx, out) {
+  const { g0, g1, at } = ctx;
+  const needs = ['earth'];
+  const place = newApparentPlace();
+  for (const kind of SEASON_KINDS) {
+    const lam = SEASON_LONGITUDE_DEG[kind] / RAD;
+    const f = (t) => Math.sin(apparentSunLongitudeDeg(at(t, needs), t) / RAD - lam);
+    const c = (t) => Math.cos(apparentSunLongitudeDeg(at(t, needs), t) / RAD - lam);
+    const brackets = scanBrackets(f, g0, g1, GRID_STEP_D, { aliasGuard: { sin: f, cos: c } });
+    for (let i = 0; i < brackets.length; i++) {
+      let t;
+      try { t = brentRoot(f, brackets[i][0], brackets[i][1], ROOT_OPTS); } catch { continue; }
+      if (!(c(t) > 0)) continue; // the opposite season's crossing (sin = 0 with cos = −1)
+      const S = at(t, needs);
+      const p = apparentPlace(S, 'sun', t, place);
+      const value = {
+        sunLongitudeDeg: SEASON_LONGITUDE_DEG[kind],
+        sunDeclinationDeg: p.decAppDeg,
+        earthDistAu: p.distAu,
+        earthDistKm: p.distAu * AU_KM,
+      };
+      out.push(makeEvent(ctx, kind, ['earth'], t, value, true));
+    }
+  }
+}
+
+/**
+ * Apparent geocentric longitude difference Moon − Sun at t, radians: both bodies through the same apparent-place
+ * reduction (apparent.js) so light-time, aberration, precession and nutation are treated alike (precession and nutation
+ * cancel in the difference; the Sun's 20″ aberration shifts a quarter by ≈ 40 s, which is why the geometric
+ * J2000 difference is not used).
+ * @param {Ctx} ctx @param {number} t @param {{sun: import('./apparent.js').ApparentPlace, moon: import('./apparent.js').ApparentPlace}} scr
+ * @returns {number} radians in (−π, π]
+ */
+function moonSunDeltaLon(ctx, t, scr) {
+  const S = ctx.earthNear(t);
+  const m = ctx.moonAt(t);
+  MOON_HELIO.x = S.earth.x + m.x; MOON_HELIO.y = S.earth.y + m.y; MOON_HELIO.z = S.earth.z + m.z;
+  MOON_HELIO.vx = S.earth.vx + m.vx; MOON_HELIO.vy = S.earth.vy + m.vy; MOON_HELIO.vz = S.earth.vz + m.vz;
+  LUNAR_STATES.sun = S.sun; LUNAR_STATES.earth = S.earth; LUNAR_STATES.moon = MOON_HELIO;
+  const ps = apparentPlace(LUNAR_STATES, 'sun', t, scr.sun);
+  const pm = apparentPlace(LUNAR_STATES, 'moon', t, scr.moon);
+  let d = (pm.lonAppDeg - ps.lonAppDeg) / RAD;
+  if (d > Math.PI) d -= 2 * Math.PI; else if (d <= -Math.PI) d += 2 * Math.PI;
+  return d;
+}
+const MOON_HELIO = newState();
+/** @type {States} */
+const LUNAR_STATES = {};
+
+/**
+ * Lunar phases, perigee/apogee and eclipses (Meeus ch. 49, 50, 54; eclipses.js):
+ *  - phases: zeros of sin(D) and cos(D), D = apparent λ☾ − λ☉ (new 0°, first quarter 90°, full 180°, last quarter
+ *    270°; D advances 12.2°/day so the daily grid brackets every crossing, the sin/cos alias guard tells the pairs
+ *    apart); value: Moon distance, apparent diameter, illuminated fraction, elongation;
+ *  - eclipses: around each new (full) Moon the minimum of the solar (lunar) shadow-axis distance within ±0.25 d is the
+ *    greatest eclipse; emitted when eclipses.classify* says the shadow reaches the Earth / the Moon;
+ *  - apsides: zeros of the geocentric r·ṙ, − → + perigee, + → − apogee (Meeus ch. 50 defines them by the distance).
+ * The Earth at off-grid instants comes from ctx.earthNear (Taylor step, see the header); nothing here evaluates the
+ * planetary series off the grid.
+ * @param {Ctx} ctx @param {Event[]} out @param {Set<string>} wanted
+ */
+function detectLunar(ctx, out, wanted) {
+  const { g0, g1, moonAt, earthNear } = ctx;
+  const scr = { sun: newApparentPlace(), moon: newApparentPlace() };
+  const illum = { phaseAngleDeg: 0, illuminatedFraction: 0, elongationDeg: 0 };
+  const sunGeo = [0, 0, 0];
+  const wantPhases = PHASE_KINDS.some((k) => wanted.has(k));
+  const wantSolar = wanted.has('solar-eclipse'), wantLunar = wanted.has('lunar-eclipse');
+
+  /** Phase value block at t (distance, diameter, illumination). */
+  function phaseValue(t, elongationDeg) {
+    const S = earthNear(t), m = moonAt(t);
+    sunGeo[0] = -S.earth.x; sunGeo[1] = -S.earth.y; sunGeo[2] = -S.earth.z;
+    moonIllumination(m, sunGeo, illum);
+    const distKm = Math.hypot(m.x, m.y, m.z) * AU_KM;
+    return {
+      elongationDeg,
+      distKm,
+      angularDiameterArcmin: moonAngularDiameterDeg(distKm) * 60,
+      illuminatedFraction: illum.illuminatedFraction,
+      phaseAngleDeg: illum.phaseAngleDeg,
+    };
+  }
+
+  if (wantPhases || wantSolar || wantLunar) {
+    const fs = (t) => Math.sin(moonSunDeltaLon(ctx, t, scr));
+    const fc = (t) => Math.cos(moonSunDeltaLon(ctx, t, scr));
+    // New and full Moons: sin D = 0, cos D = ±1
+    const syzygies = scanBrackets(fs, g0, g1, GRID_STEP_D, { aliasGuard: { sin: fs, cos: fc } });
+    for (let i = 0; i < syzygies.length; i++) {
+      let t;
+      try { t = brentRoot(fs, syzygies[i][0], syzygies[i][1], ROOT_OPTS); } catch { continue; }
+      const isNew = fc(t) > 0;
+      if (wantPhases) {
+        const kind = isNew ? 'moon-new' : 'moon-full';
+        const value = phaseValue(t, isNew ? 0 : 180);
+        if (!isNew) value.supermoon = value.distKm < SUPERMOON_MAX_DIST_KM;
+        out.push(makeEvent(ctx, kind, ['moon'], t, value, !isNew));
+      }
+      if (isNew ? wantSolar : wantLunar) detectEclipseNear(ctx, out, t, isNew, scr);
+    }
+    if (wantPhases) {
+      // Quarters: cos D = 0, sin D = ±1
+      const quarters = scanBrackets(fc, g0, g1, GRID_STEP_D, { aliasGuard: { sin: fc, cos: fs } });
+      for (let i = 0; i < quarters.length; i++) {
+        let t;
+        try { t = brentRoot(fc, quarters[i][0], quarters[i][1], ROOT_OPTS); } catch { continue; }
+        const first = fs(t) > 0;
+        out.push(makeEvent(ctx, first ? 'moon-first-quarter' : 'moon-last-quarter', ['moon'], t, phaseValue(t, first ? 90 : 270), true));
+      }
+    }
+  }
+
+  if (MOON_APSIS_KINDS.some((k) => wanted.has(k))) {
+    const f = (t) => { const m = moonAt(t); return m.x * m.vx + m.y * m.vy + m.z * m.vz; };
+    const brackets = scanBrackets(f, g0, g1, GRID_STEP_D);
+    for (let i = 0; i < brackets.length; i++) {
+      const [a, b] = brackets[i];
+      let t;
+      try { t = brentRoot(f, a, b, ROOT_OPTS); } catch { continue; }
+      const fa = a === b ? f(a - 0.25) : f(a);
+      const kind = fa < 0 ? 'moon-perigee' : 'moon-apogee';
+      const m = moonAt(t);
+      const S = earthNear(t);
+      sunGeo[0] = -S.earth.x; sunGeo[1] = -S.earth.y; sunGeo[2] = -S.earth.z;
+      moonIllumination(m, sunGeo, illum);
+      const distKm = Math.hypot(m.x, m.y, m.z) * AU_KM;
+      const value = {
+        distKm,
+        distEarthRadii: distKm / body('earth').radiusEqKm,
+        angularDiameterArcmin: moonAngularDiameterDeg(distKm) * 60,
+        illuminatedFraction: illum.illuminatedFraction,
+        elongationDeg: illum.elongationDeg,
+      };
+      out.push(makeEvent(ctx, kind, ['moon'], t, value, illum.elongationDeg > OBSERVABLE_MIN_ELONGATION_DEG));
+    }
+  }
+}
+
+const SOLAR_G = newSolarGeometry();
+const LUNAR_G = newLunarGeometry();
+
+/**
+ * Greatest eclipse around a syzygy at tSyzygy: minimise the squared shadow-axis distance (solar: axis from the Sun
+ * through the Moon vs the Earth's centre; lunar: axis from the Sun through the Earth vs the Moon's centre) with
+ * brentMin on ±ECLIPSE_SEARCH_HALF_WIDTH_D, then classify (eclipses.js). Bodies: ['earth', 'moon'] for both kinds
+ * (the Sun is implicit) so the UI frames the Earth–Moon pair.
+ * @param {Ctx} ctx @param {Event[]} out @param {number} tSyzygy @param {boolean} solar
+ * @param {{sun: object, moon: object}} scr
+ */
+function detectEclipseNear(ctx, out, tSyzygy, solar, scr) {
+  const { moonAt, earthNear, minOut } = ctx;
+  const dist2 = solar
+    ? (t) => { const g = solarEclipseGeometry(earthNear(t).earth, moonAt(t), SOLAR_G); return g.axisDistanceEr * g.axisDistanceEr; }
+    : (t) => { const g = lunarEclipseGeometry(earthNear(t).earth, moonAt(t), LUNAR_G); return g.axisDistanceEr * g.axisDistanceEr; };
+  let m;
+  try { m = brentMin(dist2, tSyzygy - ECLIPSE_SEARCH_HALF_WIDTH_D, tSyzygy + ECLIPSE_SEARCH_HALF_WIDTH_D, MIN_OPTS, minOut); } catch { return; }
+  const t = m.x;
+  if (solar) {
+    const g = solarEclipseGeometry(earthNear(t).earth, moonAt(t), SOLAR_G);
+    const type = classifySolar(g);
+    if (type === null) return;
+    const value = {
+      type,
+      gamma: g.gamma,
+      magnitude: solarMagnitude(g),
+      central: isCentral(g),
+      u: g.u,
+      penumbraRadiusEr: g.l1,
+      moonDistKm: g.moonDistKm,
+      sunDistAu: g.sunDistAu,
+      moonDiameterArcmin: g.moonDiameterArcmin,
+      sunDiameterArcmin: g.sunDiameterArcmin,
+      jdTTNewMoon: tSyzygy,
+      jdUtcNewMoon: utcFromTt(tSyzygy),
+    };
+    out.push(makeEvent(ctx, 'solar-eclipse', ['earth', 'moon'], t, value, true));
+  } else {
+    const g = lunarEclipseGeometry(earthNear(t).earth, moonAt(t), LUNAR_G);
+    const type = classifyLunar(g);
+    if (type === null) return;
+    const value = {
+      type,
+      gamma: g.gamma,
+      umbralMagnitude: g.umbralMagnitude,
+      penumbralMagnitude: g.penumbralMagnitude,
+      umbraRadiusEr: g.umbraRadiusEr,
+      penumbraRadiusEr: g.penumbraRadiusEr,
+      moonDistKm: g.moonDistKm,
+      moonDiameterArcmin: moonAngularDiameterDeg(g.moonDistKm) * 60,
+      jdTTFullMoon: tSyzygy,
+      jdUtcFullMoon: utcFromTt(tSyzygy),
+    };
+    out.push(makeEvent(ctx, 'lunar-eclipse', ['earth', 'moon'], t, value, true));
   }
 }
 
@@ -698,6 +1061,8 @@ export function findEvents(eph, jdTT0, jdTT1, opts = {}) {
   if (wanted.has('helio-parade')) detectHelioParades(ctx, raw);
   if (wanted.has('stationary')) detectStationary(ctx, raw);
   if (wanted.has('geo-parade')) detectGeoParades(ctx, raw);
+  if (wants(SEASON_KINDS)) detectSeasons(ctx, raw);
+  if (wants(LUNAR_KINDS)) detectLunar(ctx, raw, wanted);
 
   const merged = dedupeAndMerge(raw);
   const out = [];

@@ -1,9 +1,11 @@
 // Tiny DOM helpers shared by the UI modules (no framework). Also the defensive format shim: providers may be null
-// while the data module loads, so every formatter falls back to the pure astro/format.js implementation.
+// while the data module loads, so every formatter falls back to the pure astro/format.js implementation; and the
+// one tooltip of the page ([data-tip]), which works for mouse, keyboard focus and a tap on touch screens.
 import {
   formatUtc, formatJd, formatDeltaT, formatDistance, formatAu, formatKm, formatLightTime, formatSpeed, formatDeg,
   formatKmPerS, formatLonLat, formatPeriod, formatRate, formatAngle, SEP as FORMAT_SEP,
 } from '../astro/format.js';
+import { formatRa, formatDec } from './copy.js';
 
 /** ' · ' separator of composite strings (astro/format.js). */
 export const SEP = FORMAT_SEP;
@@ -84,6 +86,19 @@ export function setAttr(el, name, value) {
 }
 
 /**
+ * Show or hide a key/value row of a <dl class="kv">: both the <dt> and its <dd>, text set only when visible.
+ * @param {HTMLElement} dt
+ * @param {HTMLElement} dd
+ * @param {string|null|undefined} text  null/undefined/'' hides the row
+ */
+export function setRow(dt, dd, text) {
+  const hide = text == null || text === '' || text === '—';
+  if (dt.hidden !== hide) dt.hidden = hide;
+  if (dd.hidden !== hide) dd.hidden = hide;
+  if (!hide) setText(dd, text);
+}
+
+/**
  * Body colour (hex number or CSS string) → CSS colour string.
  * @param {number|string|undefined} c
  * @returns {string}
@@ -96,7 +111,7 @@ export function cssColour(c) {
 /** Fallback body colours (plan §Palette), used only when providers.bodyColour is absent. */
 export const BODY_COLOURS = Object.freeze({
   sun: 0xFFD27D, mercury: 0xB5B2AD, venus: 0xE8CDA0, earth: 0x6B93D6, mars: 0xC1440E,
-  jupiter: 0xD8A96B, saturn: 0xE3D6A8, uranus: 0x9AD6DE, neptune: 0x4C6EF5,
+  jupiter: 0xD8A96B, saturn: 0xE3D6A8, uranus: 0x9AD6DE, neptune: 0x4C6EF5, moon: 0xC8C8C8,
 });
 
 /** Body ids in the canonical order (keys 0…8). */
@@ -105,7 +120,7 @@ export const BODY_IDS = Object.freeze(['sun', 'mercury', 'venus', 'earth', 'mars
 /** Fallback display names. */
 export const BODY_NAMES = Object.freeze({
   sun: 'Sun', mercury: 'Mercury', venus: 'Venus', earth: 'Earth', mars: 'Mars',
-  jupiter: 'Jupiter', saturn: 'Saturn', uranus: 'Uranus', neptune: 'Neptune',
+  jupiter: 'Jupiter', saturn: 'Saturn', uranus: 'Uranus', neptune: 'Neptune', moon: 'Moon',
 });
 
 const FALLBACK_FORMAT = Object.freeze({
@@ -123,6 +138,8 @@ const FALLBACK_FORMAT = Object.freeze({
   period: formatPeriod,
   rate: formatRate,
   angle: formatAngle,
+  ra: formatRa,
+  dec: formatDec,
 });
 
 /**
@@ -171,7 +188,18 @@ export function bodyIds(providers) {
 }
 
 /**
- * True when the keyboard event originates in an editable control (shortcuts must not fire).
+ * bodyInfo(id) from the providers, never throwing (null while the data module loads).
+ * @param {object|null|undefined} providers
+ * @param {string} id
+ * @returns {Record<string, any>|null}
+ */
+export function bodyInfo(providers, id) {
+  try { return providers?.bodyInfo?.(id) ?? null; } catch { return null; }
+}
+
+/**
+ * True when the keyboard event originates in an editable control (shortcuts must not fire). Range sliders are not
+ * typing targets: they keep their own arrow keys (handled by the slider) and the page keeps every letter shortcut.
  * @param {Event} e
  * @returns {boolean}
  */
@@ -182,7 +210,7 @@ export function isTypingTarget(e) {
   if (tag === 'TEXTAREA' || tag === 'SELECT') return true;
   if (tag === 'INPUT') {
     const type = /** @type {HTMLInputElement} */ (t).type;
-    return type !== 'button' && type !== 'checkbox' && type !== 'radio' && type !== 'submit';
+    return type !== 'button' && type !== 'checkbox' && type !== 'radio' && type !== 'submit' && type !== 'range' && type !== 'color';
   }
   return t.isContentEditable;
 }
@@ -220,4 +248,85 @@ export function trapFocusIn(dialog, e) {
   const last = /** @type {HTMLElement} */ (focusables[focusables.length - 1]);
   if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) { e.preventDefault(); last.focus(); }
   else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+
+/** How long a tapped tooltip stays (ms). */
+const TIP_TAP_MS = 2600;
+
+/**
+ * One tooltip for every element with `data-tip`: hover and keyboard focus show it on fine pointers; on touch
+ * screens a tap shows it for 2.6 s (title attributes are invisible there). The tip is not a focus target and is
+ * `aria-hidden`: elements keep their own aria-label.
+ * @param {HTMLElement} root
+ * @returns {() => void} dispose
+ */
+export function installTooltips(root) {
+  const tip = h('div', { class: 'tip', role: 'tooltip', 'aria-hidden': 'true' });
+  tip.hidden = true;
+  root.append(tip);
+  let current = null;
+  let hideTimer = 0;
+
+  function place(target) {
+    const r = target.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const vh = document.documentElement.clientHeight;
+    tip.hidden = false;
+    const tw = tip.offsetWidth; const th = tip.offsetHeight;
+    let x = r.left + r.width / 2 - tw / 2;
+    x = Math.max(8, Math.min(vw - tw - 8, x));
+    let y = r.bottom + 8;
+    let above = false;
+    if (y + th > vh - 8) { y = r.top - th - 8; above = true; }
+    tip.style.transform = `translate(${Math.round(x)}px, ${Math.round(y)}px)`;
+    tip.classList.toggle('is-above', above);
+  }
+  function show(target) {
+    const text = target.getAttribute('data-tip');
+    if (!text) return;
+    clearTimeout(hideTimer);
+    current = target;
+    setText(tip, text);
+    place(target);
+    tip.classList.add('is-visible');
+  }
+  function hide() {
+    clearTimeout(hideTimer);
+    current = null;
+    tip.classList.remove('is-visible');
+    tip.hidden = true;
+  }
+  const tipTarget = (e) => (e.target instanceof Element ? e.target.closest('[data-tip]') : null);
+  const onOver = (e) => { if (e.pointerType === 'touch') return; const t = tipTarget(e); if (t && t !== current) show(t); };
+  const onOut = (e) => { const t = tipTarget(e); if (t && t === current && !(e.relatedTarget instanceof Node && t.contains(e.relatedTarget))) hide(); };
+  const onFocus = (e) => { const t = tipTarget(e); if (t && t.matches(':focus-visible')) show(t); };
+  const onBlur = (e) => { const t = tipTarget(e); if (t && t === current) hide(); };
+  const onUp = (e) => {
+    if (e.pointerType !== 'touch') return;
+    const t = tipTarget(e);
+    if (!t) { hide(); return; }
+    show(t);
+    hideTimer = setTimeout(hide, TIP_TAP_MS);
+  };
+  const onDown = (e) => { if (e.pointerType !== 'touch' && current && !tipTarget(e)) hide(); };
+  const onScroll = () => { if (current) hide(); };
+  root.addEventListener('pointerover', onOver);
+  root.addEventListener('pointerout', onOut);
+  root.addEventListener('focusin', onFocus);
+  root.addEventListener('focusout', onBlur);
+  root.addEventListener('pointerup', onUp);
+  root.addEventListener('pointerdown', onDown, true);
+  root.addEventListener('scroll', onScroll, true);
+  window.addEventListener('resize', hide);
+  return () => {
+    root.removeEventListener('pointerover', onOver);
+    root.removeEventListener('pointerout', onOut);
+    root.removeEventListener('focusin', onFocus);
+    root.removeEventListener('focusout', onBlur);
+    root.removeEventListener('pointerup', onUp);
+    root.removeEventListener('pointerdown', onDown, true);
+    root.removeEventListener('scroll', onScroll, true);
+    window.removeEventListener('resize', hide);
+    tip.remove();
+  };
 }

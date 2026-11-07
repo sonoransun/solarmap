@@ -4,8 +4,10 @@
 // injected display-tier sampler. Shape and phase are separated (critique: resampling ∝ time rate is unbounded):
 // - positions are resampled only when |jdTT − jdSampled| > P/4 or > 20 y, at most one planet per frame;
 // - brightness (past half brightening toward "now", future half faint) is a pure function of (jd − jdSampled)/P and is
-//   rewritten IN PLACE at 10 Hz into geometry.attributes.instanceColorStart.data.array (+ needsUpdate) — LineMaterial
-//   vertexColors are RGB only (no per-vertex alpha), so the fade is encoded as darkened RGB under additive blending;
+//   rewritten IN PLACE into geometry.attributes.instanceColorStart.data.array (+ needsUpdate) whenever the phase has
+//   moved by half a sample (0.5/512 of the period) since the last write — every frame at high time rates, never while
+//   paused — so the gradient slides continuously instead of in 10 Hz steps. LineMaterial vertexColors are RGB only
+//   (no per-vertex alpha), so the fade is encoded as darkened RGB under additive blending;
 // - the vertex nearest "now" is overwritten each frame with the full-tier position (the planet's own state), so the
 //   line never visibly detaches from the disc at close range (display tier ≤ ~450 km).
 // r186 LineGeometry.setPositions/setColors allocate a new InstancedInterleavedBuffer on every call, so they are called
@@ -13,38 +15,50 @@
 // segment i = 6 floats [start xyz | end xyz]; sample i is the start of segment i (i < N) and the end of segment i − 1.
 // LineSegments2.onBeforeRender copies the renderer viewport (CSS px) into material.resolution every frame in r186;
 // setResolution() is still provided and called on resize for completeness.
+// Allocation discipline: update() writes typed arrays in place; the only per-frame objects are the ones three creates.
 
-import {
-  Group, Color, AdditiveBlending, BufferGeometry, Float32BufferAttribute, LineLoop, LineSegments, LineBasicMaterial,
-  Mesh, PlaneGeometry, MeshBasicMaterial, DoubleSide, DynamicDrawUsage,
-} from 'three';
+import { Group, Color, AdditiveBlending, CircleGeometry, Mesh, DynamicDrawUsage } from 'three';
 import { Line2 } from 'three/addons/lines/Line2.js';
 import { LineGeometry } from 'three/addons/lines/LineGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+import { createGridDiscMaterial, GRID_DISC } from './skyMaterials.js';
 
 /** Segments per orbit line (513 samples). */
 export const ORBIT_SEGMENTS = 512;
 /** Resample when the sampled window has drifted by more than P/4 or 20 Julian years (days). */
 const RESAMPLE_MAX_DAYS = 20 * 365.25;
 const RESAMPLE_FRACTION = 0.25;
-/** Brightness rewrite cadence (s). */
-const BRIGHTNESS_PERIOD_S = 0.1;
-const LINEWIDTH = 1.5;
-const LINEWIDTH_SELECTED = 2.5;
+/** Rewrite the brightness when the phase has moved this far (fraction of the period): half a sample. */
+const BRIGHTNESS_PHASE_STEP = 0.5 / ORBIT_SEGMENTS;
+const LINEWIDTH = 1.25;
+const LINEWIDTH_SELECTED = 2.0;
+/** Body colours are pulled slightly toward white so additive overlaps do not saturate to pure hue. */
+const DESATURATE = 0.1;
+
+/** Trail law constants (plan §Rendering › Orbits, revised after the six-lens review). */
+export const TRAIL = Object.freeze({ pastMin: 0.25, pastGamma: 1.6, future: 0.12, futureJoin: 0.1 });
 
 /**
- * Trail weight for a sample at (t_sample − t_now)/P (plan §Rendering › Orbits; research §5.1).
- * Past half: 0.15 → 1 brightening toward now; future half: 0.15 → 0; beyond ±½ P: 0.15 (old) / 0 (far future).
+ * Trail weight for a sample at rel = (t_sample − t_now)/P.
+ * Past half (rel ∈ [−½, 0]): 0.25 → 1.0 brightening toward now with gamma 1.6, so the recent path reads as a comet
+ * tail. Future half (rel ∈ (0, ½]): a constant 0.12 — faint but present, so the whole ellipse stays readable — whose
+ * last 10 % (rel 0.45 → 0.5) rises to the past tail's 0.25 so the closed loop has no seam at the far side.
+ * Beyond ±½ P (only reachable between resamples): the nearest end value.
  * @param {number} rel
- * @returns {number}
+ * @returns {number} 0.12 … 1
  */
 export function trailWeight(rel) {
   if (rel <= 0) {
     const u = Math.min(1, Math.max(0, 1 + rel / 0.5));
-    return 0.15 + 0.85 * Math.pow(u, 2.2);
+    return TRAIL.pastMin + (1 - TRAIL.pastMin) * Math.pow(u, TRAIL.pastGamma);
   }
-  return 0.15 * Math.min(1, Math.max(0, 1 - rel / 0.5));
+  const r = Math.min(0.5, rel);
+  const joinStart = 0.5 - TRAIL.futureJoin * 0.5;
+  if (r <= joinStart) return TRAIL.future;
+  const t = (r - joinStart) / (0.5 - joinStart);
+  const s = t * t * (3 - 2 * t);
+  return TRAIL.future + (TRAIL.pastMin - TRAIL.future) * s;
 }
 
 /**
@@ -71,11 +85,11 @@ export function createOrbits({ bodies }) {
   /** @type {(id: string, jdTT: number) => (number[]|{x:number,y:number,z:number})|null} */
   let fullSampler = null;
   let selectedId = null;
-  let brightAcc = BRIGHTNESS_PERIOD_S;
   let lastJd = NaN;
 
   const records = [];
   const byId = new Map();
+  const white = new Color(0xffffff);
   for (const def of bodies) {
     if (def.id === 'sun' || !(def.siderealOrbitDays > 0)) continue;
     const geometry = new LineGeometry();
@@ -99,7 +113,7 @@ export function createOrbits({ bodies }) {
     line.renderOrder = 5;
     line.visible = false; // until sampled
     group.add(line);
-    const colour = new Color(def.colour);
+    const colour = new Color(def.colour).lerp(white, DESATURATE);
     const rec = {
       id: def.id,
       P: def.siderealOrbitDays,
@@ -115,6 +129,7 @@ export function createOrbits({ bodies }) {
       jdSampled: NaN,
       headIdx: -1,
       sampled: false,
+      lastShift: NaN, // phase (jdSampled − jd)/P at the last brightness write
     };
     records.push(rec);
     byId.set(def.id, rec);
@@ -158,13 +173,14 @@ export function createOrbits({ bodies }) {
       if (i > 0) { const o = 6 * (i - 1) + 3; colArr[o] = r; colArr[o + 1] = g; colArr[o + 2] = b; }
     }
     rec.colBuf.needsUpdate = true;
+    rec.lastShift = shift;
   }
 
   /**
    * Per-frame update.
    * @param {{ jdTT: number, states?: Record<string, {x:number,y:number,z:number}>, dtSeconds?: number, selected?: string|null }} args
    */
-  function update({ jdTT, states, dtSeconds = 0, selected = selectedId }) {
+  function update({ jdTT, states, selected = selectedId }) {
     if (!sampler) return;
     if (selected !== selectedId) setSelected(selected);
 
@@ -179,17 +195,17 @@ export function createOrbits({ bodies }) {
     }
     if (worst) resample(worst, jdTT);
 
-    // 2. brightness at 10 Hz (or when time jumps)
-    brightAcc += dtSeconds;
+    // 2. a time jump (scrub, event jump) rewrites every gradient at once
     const jumped = !(Math.abs(jdTT - lastJd) < 30);
     lastJd = jdTT;
-    const doBright = brightAcc >= BRIGHTNESS_PERIOD_S || jumped;
-    if (doBright) brightAcc = 0;
 
-    // 3. head vertex snapped to the full-tier position
+    // 3. brightness when the phase moved by half a sample; head vertex snapped to the full-tier position
     for (const rec of records) {
       if (!rec.sampled) continue;
-      if (doBright && rec !== worst) writeBrightness(rec, jdTT);
+      if (rec !== worst) {
+        const shift = (rec.jdSampled - jdTT) / rec.P;
+        if (jumped || !(Math.abs(shift - rec.lastShift) < BRIGHTNESS_PHASE_STEP)) writeBrightness(rec, jdTT);
+      }
       const idx = Math.max(0, Math.min(N, Math.round(N * (0.5 + (jdTT - rec.jdSampled) / rec.P))));
       const st = states ? states[rec.id] : null;
       let hx, hy, hz;
@@ -269,43 +285,30 @@ export function createOrbits({ bodies }) {
   };
 }
 
-/** Grid ring radii (AU) and appearance (plan §Rendering › Orbits: rings 0.12, spokes 0.06, plane hint 0.05). */
-export const GRID_RINGS_AU = [1, 5, 10, 30];
-const GRID_COLOUR = 0x8b93a7;
-const GRID_SPOKES = 12;
-const GRID_SPOKE_R0 = 0.3;
-const GRID_SPOKE_R1 = 32;
+/** Grid ring radii (AU) — also the uRings of the disc shader. */
+export const GRID_RINGS_AU = GRID_DISC.rings;
+/** Disc radius (AU): the plane hint, rings and spokes have all faded out here. */
+export const GRID_FADE_AU = GRID_DISC.fadeAu;
 
 /**
- * Ecliptic grid: LineLoop rings at 1/5/10/30 AU, 12 spokes, CSS2D "1 AU" labels and a faint plane hint.
+ * Ecliptic grid: ONE analytic disc mesh (shaders/grid.js) — radial-gradient plane hint fading out by 45 AU, rings at
+ * 1/5/10/30 AU (opacity 0.10) and 12 spokes every 30° of ecliptic longitude (0.05), anti-aliased with screen-space
+ * derivatives — plus CSS2D "1 AU" labels (class 'grid-lbl', styled in scene.css).
  */
 export function createGrid() {
   const group = new Group();
   group.name = 'grid';
-  const geometries = [];
-  const materials = [];
   const labels = [];
 
-  const ringMaterial = new LineBasicMaterial({ color: GRID_COLOUR, transparent: true, opacity: 0.12, depthWrite: false });
-  materials.push(ringMaterial);
-  const RING_POINTS = 256;
-  for (const r of GRID_RINGS_AU) {
-    const arr = new Float32Array(RING_POINTS * 3);
-    for (let i = 0; i < RING_POINTS; i++) {
-      const t = (i / RING_POINTS) * Math.PI * 2;
-      arr[i * 3] = r * Math.cos(t);
-      arr[i * 3 + 1] = r * Math.sin(t);
-      arr[i * 3 + 2] = 0;
-    }
-    const g = new BufferGeometry();
-    g.setAttribute('position', new Float32BufferAttribute(arr, 3));
-    geometries.push(g);
-    const ring = new LineLoop(g, ringMaterial);
-    ring.name = 'grid-ring:' + r;
-    ring.renderOrder = 5;
-    ring.frustumCulled = false;
-    group.add(ring);
+  const discGeom = new CircleGeometry(GRID_FADE_AU, 128); // XY plane = ecliptic (z = north)
+  const discMaterial = createGridDiscMaterial();
+  const disc = new Mesh(discGeom, discMaterial);
+  disc.name = 'ecliptic-grid';
+  disc.renderOrder = -1;
+  disc.frustumCulled = false;
+  group.add(disc);
 
+  for (const r of GRID_RINGS_AU) {
     const el = document.createElement('div');
     el.className = 'grid-lbl';
     el.textContent = r + ' AU';
@@ -319,36 +322,6 @@ export function createGrid() {
     labels.push(label);
   }
 
-  const spokeMaterial = new LineBasicMaterial({ color: GRID_COLOUR, transparent: true, opacity: 0.06, depthWrite: false });
-  materials.push(spokeMaterial);
-  const spokes = new Float32Array(GRID_SPOKES * 6);
-  for (let i = 0; i < GRID_SPOKES; i++) {
-    const t = (i / GRID_SPOKES) * Math.PI * 2;
-    const c = Math.cos(t), s = Math.sin(t);
-    spokes[i * 6] = GRID_SPOKE_R0 * c; spokes[i * 6 + 1] = GRID_SPOKE_R0 * s; spokes[i * 6 + 2] = 0;
-    spokes[i * 6 + 3] = GRID_SPOKE_R1 * c; spokes[i * 6 + 4] = GRID_SPOKE_R1 * s; spokes[i * 6 + 5] = 0;
-  }
-  const spokeGeom = new BufferGeometry();
-  spokeGeom.setAttribute('position', new Float32BufferAttribute(spokes, 3));
-  geometries.push(spokeGeom);
-  const spokeLines = new LineSegments(spokeGeom, spokeMaterial);
-  spokeLines.name = 'grid-spokes';
-  spokeLines.renderOrder = 5;
-  spokeLines.frustumCulled = false;
-  group.add(spokeLines);
-
-  const planeGeom = new PlaneGeometry(200, 200); // XY plane = ecliptic (z = north)
-  const planeMaterial = new MeshBasicMaterial({
-    color: 0x1a2236, transparent: true, opacity: 0.05, side: DoubleSide, depthWrite: false,
-  });
-  geometries.push(planeGeom);
-  materials.push(planeMaterial);
-  const plane = new Mesh(planeGeom, planeMaterial);
-  plane.name = 'ecliptic-plane';
-  plane.renderOrder = -1;
-  plane.frustumCulled = false;
-  group.add(plane);
-
   /** @param {boolean} on */
   function setVisible(on) {
     group.visible = on;
@@ -356,10 +329,10 @@ export function createGrid() {
 
   function dispose() {
     for (const l of labels) { l.removeFromParent(); l.element.remove(); }
-    for (const g of geometries) g.dispose();
-    for (const m of materials) m.dispose();
+    discGeom.dispose();
+    discMaterial.dispose();
     group.removeFromParent();
   }
 
-  return { group, plane, labels, setVisible, dispose };
+  return { group, plane: disc, disc, material: discMaterial, labels, setVisible, dispose };
 }

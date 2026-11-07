@@ -5,7 +5,52 @@
 // Keeler gap 136,487 km (2.265 R), Maxwell gap 87,491 km (1.452 R); Cassini division = the B–A gap.
 // Uniforms updated per frame by the render core (object space of the ring mesh, planet-radius units):
 //   uSunDirObj  unit vector planet -> Sun ; uCamPosObj camera position (worldToLocal of the ring mesh).
+//
+// RING_ALPHA_GLSL is shared with Saturn's globe material (materials.js), which projects each surface point along
+// the Sun direction onto the ring plane and reads the same opacity law for the rings' shadow on the globe.
+// Anti-aliasing: `fw` is the screen-space footprint of r (fwidth(r), computed by the caller in uniform control
+// flow). The fine ringlet noise terms fade out once a pixel spans more than ~¼ of their period (Nyquist: a term
+// at frequency f cycles/R cannot be resolved when fw·f ≳ 0.5), and each narrow gap is widened to the footprint
+// with its depth scaled by w/w' so the total "missing light" is conserved — no moiré at mid distance, the gaps
+// still read as thin dark lines.
 import { NOISE3D_GLSL } from './noise3d.js';
+
+export const RING_ALPHA_GLSL = /* glsl */ `
+// 1 − smoothstep dip of width w around c, widened to the pixel footprint fw with conserved depth
+float ringGapDip(float r, float c, float w, float fw) {
+  float wp = max(w, fw);
+  return (1.0 - smoothstep(0.0, wp, abs(r - c))) * (w / wp);
+}
+// 1 while a term of frequency f (cycles per planet radius) is resolvable at footprint fw, 0 past Nyquist
+float ringAaFade(float fw, float f) {
+  return 1.0 - smoothstep(0.2, 0.55, fw * f);
+}
+// Optical opacity of the main rings at radius r (planet radii), procedural law
+float ringAlpha(float r, float innerR, float outerR, float seed, float fw) {
+  float a = 0.0;
+  a += smoothstep(1.239, 1.26, r) * (1.0 - smoothstep(1.50, 1.526, r)) * 0.35;    // C ring (dim)
+  a += smoothstep(1.526, 1.54, r) * (1.0 - smoothstep(1.93, 1.950, r)) * 0.95;    // B ring (bright)
+  a += smoothstep(2.030, 2.045, r) * (1.0 - smoothstep(2.25, 2.270, r)) * 0.65;   // A ring
+  a *= 1.0 - 0.85 * ringGapDip(r, 2.214, 0.004, fw);                               // Encke gap
+  a *= 1.0 - 0.70 * ringGapDip(r, 2.265, 0.0025, fw);                              // Keeler gap
+  a *= 1.0 - 0.50 * ringGapDip(r, 1.452, 0.006, fw);                               // Maxwell gap
+  // fine ringlets: two noise octaves (periods ≈ 1/140 R and 1/420 R), each faded out past its Nyquist footprint
+  float fine = snoise(vec3(r * 140.0, seed, 0.0)) * 0.5 * ringAaFade(fw, 140.0)
+             + snoise(vec3(r * 420.0, seed + 3.0, 0.0)) * 0.25 * ringAaFade(fw, 420.0);
+  a *= 0.8 + 0.2 * fine;
+  a *= smoothstep(innerR, innerR + 0.01, r) * (1.0 - smoothstep(outerR - 0.01, outerR, r));
+  return clamp(a, 0.0, 1.0);
+}
+// Opacity with the optional photographic strip (Cassini-derived optical depth, u = (r − inner)/(outer − inner))
+float ringOpticalAlpha(float r, float innerR, float outerR, float seed, float fw, sampler2D strip, float texMix) {
+  float a = ringAlpha(r, innerR, outerR, seed, fw);
+  if (texMix > 0.001) {
+    float t = clamp((r - innerR) / max(outerR - innerR, 1e-4), 0.0, 1.0);
+    a = mix(a, texture2D(strip, vec2(t, 0.5)).a, texMix);
+  }
+  return a;
+}
+`;
 
 export const RINGS_VERTEX = /* glsl */ `
 #include <common>
@@ -33,20 +78,7 @@ uniform sampler2D uRingTex;  // optional photographic ring strip (radial: u = (r
 uniform float uTexMix;
 varying vec3 vObj;
 ${NOISE3D_GLSL}
-float gapDip(float r, float c, float w) { return 1.0 - smoothstep(0.0, w, abs(r - c)); }
-float ringAlpha(float r) {
-  float a = 0.0;
-  a += smoothstep(1.239, 1.26, r) * (1.0 - smoothstep(1.50, 1.526, r)) * 0.35;    // C ring (dim)
-  a += smoothstep(1.526, 1.54, r) * (1.0 - smoothstep(1.93, 1.950, r)) * 0.95;    // B ring (bright)
-  a += smoothstep(2.030, 2.045, r) * (1.0 - smoothstep(2.25, 2.270, r)) * 0.65;   // A ring
-  a *= 1.0 - 0.85 * gapDip(r, 2.214, 0.004);                                      // Encke gap
-  a *= 1.0 - 0.70 * gapDip(r, 2.265, 0.0025);                                     // Keeler gap
-  a *= 1.0 - 0.50 * gapDip(r, 1.452, 0.006);                                      // Maxwell gap
-  float fine = snoise(vec3(r * 140.0, uSeed, 0.0)) * 0.5 + snoise(vec3(r * 420.0, uSeed + 3.0, 0.0)) * 0.25;
-  a *= 0.8 + 0.2 * fine;                                                          // fine ringlets
-  a *= smoothstep(uInnerR, uInnerR + 0.01, r) * (1.0 - smoothstep(uOuterR - 0.01, uOuterR, r));
-  return clamp(a, 0.0, 1.0);
-}
+${RING_ALPHA_GLSL}
 vec3 ringColour(float r) {
   vec3 cC = vec3(0.62, 0.60, 0.58);
   vec3 cB = vec3(0.86, 0.80, 0.66);
@@ -56,14 +88,12 @@ vec3 ringColour(float r) {
 }
 void main() {
   float r = length(vObj.xy);
-  float a = ringAlpha(r) * uOpacity;
+  float fw = fwidth(r);
+  float a = ringOpticalAlpha(r, uInnerR, uOuterR, uSeed, fw, uRingTex, uTexMix) * uOpacity;
   vec3 baseCol = ringColour(r);
   if (uTexMix > 0.001) {
-    // Photographic ring strip: Cassini-derived optical depth and colour, sampled by radius.
     float t = clamp((r - uInnerR) / max(uOuterR - uInnerR, 1e-4), 0.0, 1.0);
-    vec4 photo = texture2D(uRingTex, vec2(t, 0.5));
-    a = mix(a, photo.a * uOpacity, uTexMix);
-    baseCol = mix(baseCol, photo.rgb, uTexMix);
+    baseCol = mix(baseCol, texture2D(uRingTex, vec2(t, 0.5)).rgb, uTexMix);
   }
   if (a < 0.003) discard;
   float sz = uSunDirObj.z;

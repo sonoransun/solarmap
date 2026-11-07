@@ -66,6 +66,22 @@ located by linear interpolation (+ → − retrograde start, − → + retrograd
 "2025-02-24"]` (instants 2024-12-06T23:31 and 2025-02-24T02:02 UT). Geometric J2000 timings differ from these
 apparent of-date timings by well under a day; the events test uses ±1 d.
 
+### Scientist-capability fixtures (`node scripts/fetch-observer.mjs`, 2026-11-06, API 1.2)
+
+| File | Content | Verifies |
+|---|---|---|
+| `observer.json` (+ `observer.raw.txt`) | OBSERVER tables, `CENTER='500@399'` (geocentric), planet **centres** `199 299 499 599 699 799 899`, 12 epochs at 0h TT 2020-01-01 … 2027-01-01 (`TLIST_TYPE='JD' TIME_TYPE='TT' CAL_FORMAT='JD' ANG_FORMAT='DEG' EXTRA_PREC='YES' APPARENT='AIRLESS'`), `QUANTITIES='1,2,9,14,20,29'`: astrometric RA/Dec (ICRF), apparent RA/Dec of date ("EOP-corrected IAU76/80", light-time + deflection + aberration + precession + nutation), APmag & S-brt (`null` = `n.a.`), sub-observer planetodetic lon/lat (WEST-positive for the prograde rotators, EAST-positive for Venus and Uranus — see each body's `poleLine`), delta & deldot, constellation. | `apparent.test.mjs` (astrometric ≤ 1″, apparent ≤ 1.5″ inner planets), `photometry.test.mjs` (magnitudes ≤ 0.1 mag; Mars 0.15), `orientation.test.mjs` (sub-Earth longitudes at t − τ ≤ 0.02°), sub-Earth latitudes ≤ 0.003° |
+| `elements.json` (+ raw) | ELEMENTS tables, Mars (4) and Jupiter (5) barycentres, `CENTER='500@10' REF_PLANE='ECLIPTIC' REF_SYSTEM='ICRF' OUT_UNITS='AU-D' TP_TYPE='ABSOLUTE' TIME_TYPE='TDB'` (the only type Horizons accepts for elements; the JD list equals the VECTORS epochs 2451545.0, 2460000.5, 2460676.25, 2461297.0, \|TDB − TT\| ≤ 1.7 ms), with the header's **Keplerian GM** = GM☉ + GM(target) (2.9591230378e-4 / 2.9619474286e-4 AU³/d²). | `elements.test.mjs` (Horizons state → elements to 1e-12 AU; VSOP87 state → elements a ≤ 1e-6 AU (Jupiter 2e-6), angles ≤ 0.001°) |
+| `saturn-rings-2025.json` (+ raw) | Saturn `QUANTITIES='14'` every 6 h 2025-03-01 → 2025-04-15 (TT); `crossingJdTT` = linear interpolation of the sub-Earth-latitude sign change = **2460758.2416 (2025-03-23 17:48 TT)** — the published ring-plane crossing date the gated orientation test waited for. | `orientation.test.mjs` ring-plane crossing (geometric instant −22 min from Horizons' light-time-corrected one) |
+| `moon-libration.json` (+ raw) | Moon `QUANTITIES='14'` every 30 d 2024-01-01 → 2027-12-31 (TT), Horizons frame `MOON_ME` (mean Earth/polar axis, DE421), east-positive. | `moon-integration.test.mjs`: IAU 2015 Table 2 lunar elements reproduce the sub-Earth point to 0.0077° / 0.0034° (tolerances 0.012° / 0.005°) |
+| `moon-apsides-2025.json` (+ raw) | Moon `QUANTITIES='20'` hourly 2025-01-01 → 2025-04-01 (TT); `apsides` = parabola through each hourly extremum of delta (7 perigees/apogees). | `eclipses.test.mjs`: events `moon-perigee` / `moon-apogee` within 15 min / 60 km (measured 10.5 min / 41 km — the Meeus ch. 47 velocity error of ≈ 10 km/d on a flat extremum) |
+
+12 GET requests, sequential, ≥ 1.5 s apart (self-checked), same backoff as `fetch-horizons.mjs`. Horizons quirks: `ELEMENTS` rejects `TIME_TYPE='TT'` ("Only TDB is allowed for osculating element TIME_TYPE"); sub-observer latitudes are planetoDETIC (convert with tan φ_c = (1 − f)² tan φ_d: 2° difference for Saturn); sub-observer longitudes are evaluated with the body rotated at the retarded time t − τ (Jupiter: 25° from the geometric value).
+
+NASA eclipse reference values used by `eclipses.test.mjs` (hand-entered from the Five Millennium Canon pages,
+https://eclipse.gsfc.nasa.gov/SEcat5/SE2001-2100.html and https://eclipse.gsfc.nasa.gov/LEcat5/LE2001-2100.html):
+γ and magnitude at greatest eclipse for the seven instants of `moon.json` `eclipses`.
+
 ### Fair use / regeneration
 
 `npm run data:horizons` performs exactly 9 GET requests (8 VECTORS + 1 OBSERVER), strictly sequentially, ≥ 1.5 s apart,
@@ -105,6 +121,13 @@ when a tolerance is widened beyond the plan's value, record it here with the mea
 | 2026-09-13 | horizons · Neptune · 1600–1700 & 2300–2600 (km) | 200,000 | 173,930.52 | 227,000 | 1.3× measured = 226,109.7 > plan (2600 epoch, the epoch the critique asked to add); rounded up |
 | 2026-09-13 | horizons · Mercury · angle 1900–2100 (″) | 0.05 | 0.0605 | 0.08 | 1.3× measured = 0.0787 > plan (J2095, JD 2486243.75); rounded up |
 | 2026-09-13 | horizons · Uranus · angle 1900–2100 (″) | 1.5 | 1.4144 | 1.85 | 1.3× measured = 1.839 > plan (J2035, JD 2464328.75); rounded up |
+| 2026-11-06 | apparent · Uranus · astrometric (″) | 1 (brief, inner planets) | 1.344 | 1.75 | VSOP87 heliocentric residual 1.41″ seen from Earth; outer planet, brief tolerance is for the inner ones |
+| 2026-11-06 | apparent · Uranus · apparent (″) | 1.5 | 1.225 | 1.6 | same cause |
+| 2026-11-06 | apparent · Neptune · astrometric (″) | 1 | 1.409 | 1.85 | VSOP87 heliocentric residual 2.28″ seen from Earth |
+| 2026-11-06 | apparent · Neptune · apparent (″) | 1.5 | 1.522 | 2.0 | same cause |
+| 2026-11-06 | photometry · Mars APmag (mag) | 0.1 | 0.102 | 0.15 | Horizons applies Mallama & Hilton's rotational/seasonal Mars terms (±0.07 mag), not transcribed here; residual uncorrelated with phase angle, mean +0.006 |
+| 2026-11-06 | elements · Jupiter · a from the VSOP87 state (AU) | 1e-6 | 1.33e-6 | 2e-6 | 2a²v·δv/μ with the 1.3e-8 AU/d velocity residual; Horizons-state path is exact to 1e-14 |
+| 2026-11-06 | orientation · Earth sub-solar lon / lat (°) | 0.02 / 0.01 | 0.0076 / 0.0028 | 0.012 / 0.005 | TIGHTENED (nutation + GAST added); the remaining 0.0056° of longitude is the 20″ aberration in the apparent fixtures |
 
 Not widened (plan value ≥ 1.3× measured): all other position cells, Venus/Earth/Mars/Jupiter/Saturn/Neptune angles, and
 every velocity tolerance (first measurement 1900–2100: Mercury 7.15e-9, Venus 3.27e-9, Earth 5.83e-9, Mars 8.08e-9,

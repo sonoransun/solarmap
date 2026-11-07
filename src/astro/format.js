@@ -267,10 +267,81 @@ export function formatRate(daysPerSecond) {
   return `${sign}${trim((r / 365.25).toFixed(2))} y/s`;
 }
 
+/**
+ * Right ascension in degrees as 'hh mm ss.s' (24h = 360°, 1h = 15°; the Astronomical Almanac sexagesimal form with a
+ * tenth of a second ≈ 1.5″ of arc): formatRa(74.7398) → '04 58 57.6'. Rounded on the total tenths so carries propagate
+ * (a value that rounds to 24h 00m 00.0s wraps to '00 00 00.0').
+ * @param {number} deg
+ * @param {number} [decimals=1] decimals of the seconds
+ * @returns {string}
+ */
+export function formatRa(deg, decimals = 1) {
+  if (!Number.isFinite(deg)) return '—';
+  const scale = 10 ** decimals;
+  const hours = ((deg % 360) + 360) % 360 / 15;
+  let units = Math.round(hours * 3600 * scale) % (24 * 3600 * scale); // wrap 24h → 0h
+  const h = Math.floor(units / (3600 * scale)); units -= h * 3600 * scale;
+  const m = Math.floor(units / (60 * scale)); units -= m * 60 * scale;
+  const s = units / scale;
+  return `${pad2(h)} ${pad2(m)} ${decimals > 0 ? pad2Fixed(s, decimals) : pad2(Math.round(s))}`;
+}
+
+/**
+ * Declination (or any latitude-like angle) in degrees as '±dd° mm′ ss″' with the sign always shown (Almanac style):
+ * formatDec(-23.0328) → '−23° 01′ 58″', formatDec(0) → '+00° 00′ 00″'. The minus sign is U+2212.
+ * @param {number} deg
+ * @param {number} [decimals=0] decimals of the arcseconds
+ * @returns {string}
+ */
+export function formatDec(deg, decimals = 0) {
+  if (!Number.isFinite(deg)) return '—';
+  const scale = 10 ** decimals;
+  let units = Math.round(Math.abs(deg) * 3600 * scale);
+  const sign = deg < 0 && units > 0 ? '−' : '+';
+  const d = Math.floor(units / (3600 * scale)); units -= d * 3600 * scale;
+  const m = Math.floor(units / (60 * scale)); units -= m * 60 * scale;
+  const s = units / scale;
+  return `${sign}${pad2(d)}° ${pad2(m)}′ ${decimals > 0 ? pad2Fixed(s, decimals) : pad2(Math.round(s))}″`;
+}
+
+/**
+ * Apparent magnitude: one decimal with an explicit sign for negative values and the U+2212 minus ('−2.9', '5.7');
+ * 'mag' suffix optional. NaN → '—'.
+ * @param {number} mag
+ * @param {{decimals?: number, suffix?: boolean}} [opts]
+ * @returns {string}
+ */
+export function formatMag(mag, { decimals = 1, suffix = false } = {}) {
+  if (!Number.isFinite(mag)) return '—';
+  const s = Math.abs(mag).toFixed(decimals);
+  return `${mag < 0 && Number(s) !== 0 ? '−' : ''}${s}${suffix ? ' mag' : ''}`;
+}
+
+/**
+ * Small angle in arcseconds: formatArcsec(31.7) → '31.7″'; below 1″ three decimals ('0.038″'), at or above 60″ the
+ * arcminute form ('1.2′'), at or above 1° degrees ('1.52°').
+ * @param {number} arcsec
+ * @returns {string}
+ */
+export function formatArcsec(arcsec) {
+  if (!Number.isFinite(arcsec)) return '—';
+  const a = Math.abs(arcsec);
+  if (a >= 3600) return `${(arcsec / 3600).toFixed(2)}°`;
+  if (a >= 60) return `${(arcsec / 60).toFixed(1)}′`;
+  if (a < 1) return `${arcsec.toFixed(3)}″`;
+  return `${arcsec.toFixed(1)}″`;
+}
+
 function trim(s) {
   return s.replace(/\.?0+$/, '');
 }
 
 function pad2(n) {
   return n < 10 ? `0${n}` : String(n);
+}
+
+/** Fixed decimals with a two-digit integer part: pad2Fixed(7.56, 1) → '07.6'. */
+function pad2Fixed(x, decimals) {
+  const s = x.toFixed(decimals);
+  return x < 10 ? `0${s}` : s;
 }

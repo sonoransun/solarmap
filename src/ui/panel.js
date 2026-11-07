@@ -24,11 +24,11 @@ export function createPanel({ el, tabs, onChange }) {
   const isSheet = () => !!mq?.matches;
 
   // Drag handle (bottom sheet only; hidden by CSS on desktop).
-  const handle = h('button', { class: 'sheet-handle', type: 'button', 'aria-label': 'Expand panel', 'aria-expanded': 'false', title: 'Drag or tap to expand' });
+  const handle = h('button', { class: 'sheet-handle', type: 'button', 'aria-label': 'Expand panel', 'aria-expanded': 'false', 'data-tip': 'Drag or tap to open the details' });
   const tablist = h('div', { class: 'tabs', role: 'tablist', 'aria-label': 'Panel sections' });
   const tabButtons = tabs.map((t, i) => h('button', {
     class: 'tab', type: 'button', role: 'tab', id: `tab-${t.id}`, 'aria-controls': `tabpanel-${t.id}`,
-    'aria-selected': i === 0 ? 'true' : 'false', tabindex: i === 0 ? '0' : '-1', text: t.label, title: t.hint || t.label,
+    'aria-selected': i === 0 ? 'true' : 'false', tabindex: i === 0 ? '0' : '-1', text: t.label, 'data-tip': t.hint || null,
   }));
   tabButtons.forEach((b) => tablist.append(b));
 

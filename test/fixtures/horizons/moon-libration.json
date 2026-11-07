@@ -1,0 +1,255 @@
+{
+ "source": "JPL Horizons API, EPHEM_TYPE=OBSERVER, COMMAND=301 (Moon), CENTER=500@399, QUANTITIES=14 (ObsSub-LON/ObsSub-LAT in the IAU_MOON frame, apparent = light-time corrected, planetodetic = planetocentric for the spherical IAU Moon), START_TIME=2024-01-01, STOP_TIME=2027-12-31, STEP_SIZE=30d, TIME_TYPE=TT, CAL_FORMAT=JD",
+ "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%27301%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27OBSERVER%27&CENTER=%27500%40399%27&QUANTITIES=%2714%27&START_TIME=%272024-01-01%27&STOP_TIME=%272027-12-31%27&STEP_SIZE=%2730d%27&TIME_TYPE=%27TT%27&CSV_FORMAT=%27YES%27&ANG_FORMAT=%27DEG%27&CAL_FORMAT=%27JD%27",
+ "apiVersion": "1.2",
+ "fetchedAt": "2026-11-07T05:39:16.851Z",
+ "poleLine": "Target pole/equ : MOON_ME                         {East-longitude positive}",
+ "radiiLine": "Target radii    : 1737.4, 1737.4, 1737.4 km       {Equator_a, b, pole_c}",
+ "rows": [
+  {
+   "jdTT": 2460310.5,
+   "subLonDeg": 0.038528,
+   "subLatDeg": -4.685781
+  },
+  {
+   "jdTT": 2460340.5,
+   "subLonDeg": 356.519284,
+   "subLatDeg": -1.219636
+  },
+  {
+   "jdTT": 2460370.5,
+   "subLonDeg": 353.776498,
+   "subLatDeg": 2.740527
+  },
+  {
+   "jdTT": 2460400.5,
+   "subLonDeg": 352.795878,
+   "subLatDeg": 5.853226
+  },
+  {
+   "jdTT": 2460430.5,
+   "subLonDeg": 354.093478,
+   "subLatDeg": 6.734328
+  },
+  {
+   "jdTT": 2460460.5,
+   "subLonDeg": 357.249544,
+   "subLatDeg": 4.632503
+  },
+  {
+   "jdTT": 2460490.5,
+   "subLonDeg": 1.133974,
+   "subLatDeg": 0.290478
+  },
+  {
+   "jdTT": 2460520.5,
+   "subLonDeg": 4.62378,
+   "subLatDeg": -4.158527
+  },
+  {
+   "jdTT": 2460550.5,
+   "subLonDeg": 6.8241,
+   "subLatDeg": -6.608457
+  },
+  {
+   "jdTT": 2460580.5,
+   "subLonDeg": 7.070126,
+   "subLatDeg": -6.251592
+  },
+  {
+   "jdTT": 2460610.5,
+   "subLonDeg": 5.257696,
+   "subLatDeg": -3.602289
+  },
+  {
+   "jdTT": 2460640.5,
+   "subLonDeg": 1.989146,
+   "subLatDeg": 0.189917
+  },
+  {
+   "jdTT": 2460670.5,
+   "subLonDeg": 358.278028,
+   "subLatDeg": 3.871611
+  },
+  {
+   "jdTT": 2460700.5,
+   "subLonDeg": 355.143865,
+   "subLatDeg": 6.295187
+  },
+  {
+   "jdTT": 2460730.5,
+   "subLonDeg": 353.320576,
+   "subLatDeg": 6.560016
+  },
+  {
+   "jdTT": 2460760.5,
+   "subLonDeg": 353.162726,
+   "subLatDeg": 4.308048
+  },
+  {
+   "jdTT": 2460790.5,
+   "subLonDeg": 354.753886,
+   "subLatDeg": 0.152127
+  },
+  {
+   "jdTT": 2460820.5,
+   "subLonDeg": 357.891933,
+   "subLatDeg": -4.157288
+  },
+  {
+   "jdTT": 2460850.5,
+   "subLonDeg": 1.679329,
+   "subLatDeg": -6.457151
+  },
+  {
+   "jdTT": 2460880.5,
+   "subLonDeg": 4.527139,
+   "subLatDeg": -5.667383
+  },
+  {
+   "jdTT": 2460910.5,
+   "subLonDeg": 5.284738,
+   "subLatDeg": -2.464245
+  },
+  {
+   "jdTT": 2460940.5,
+   "subLonDeg": 4.034334,
+   "subLatDeg": 1.564204
+  },
+  {
+   "jdTT": 2460970.5,
+   "subLonDeg": 1.630016,
+   "subLatDeg": 4.910008
+  },
+  {
+   "jdTT": 2461000.5,
+   "subLonDeg": 358.9684,
+   "subLatDeg": 6.512681
+  },
+  {
+   "jdTT": 2461030.5,
+   "subLonDeg": 356.680147,
+   "subLatDeg": 5.844544
+  },
+  {
+   "jdTT": 2461060.5,
+   "subLonDeg": 355.236767,
+   "subLatDeg": 3.013034
+  },
+  {
+   "jdTT": 2461090.5,
+   "subLonDeg": 355.183049,
+   "subLatDeg": -1.122436
+  },
+  {
+   "jdTT": 2461120.5,
+   "subLonDeg": 357.029001,
+   "subLatDeg": -4.958187
+  },
+  {
+   "jdTT": 2461150.5,
+   "subLonDeg": 0.560969,
+   "subLatDeg": -6.606405
+  },
+  {
+   "jdTT": 2461180.5,
+   "subLonDeg": 4.362601,
+   "subLatDeg": -5.077436
+  },
+  {
+   "jdTT": 2461210.5,
+   "subLonDeg": 6.770997,
+   "subLatDeg": -1.202372
+  },
+  {
+   "jdTT": 2461240.5,
+   "subLonDeg": 7.145094,
+   "subLatDeg": 3.065991
+  },
+  {
+   "jdTT": 2461270.5,
+   "subLonDeg": 5.745407,
+   "subLatDeg": 6.016881
+  },
+  {
+   "jdTT": 2461300.5,
+   "subLonDeg": 3.061541,
+   "subLatDeg": 6.784927
+  },
+  {
+   "jdTT": 2461330.5,
+   "subLonDeg": 359.599313,
+   "subLatDeg": 5.296924
+  },
+  {
+   "jdTT": 2461360.5,
+   "subLonDeg": 356.024547,
+   "subLatDeg": 2.065124
+  },
+  {
+   "jdTT": 2461390.5,
+   "subLonDeg": 353.259446,
+   "subLatDeg": -1.951678
+  },
+  {
+   "jdTT": 2461420.5,
+   "subLonDeg": 352.29624,
+   "subLatDeg": -5.414701
+  },
+  {
+   "jdTT": 2461450.5,
+   "subLonDeg": 353.675066,
+   "subLatDeg": -6.81851
+  },
+  {
+   "jdTT": 2461480.5,
+   "subLonDeg": 356.932389,
+   "subLatDeg": -5.196045
+  },
+  {
+   "jdTT": 2461510.5,
+   "subLonDeg": 0.805489,
+   "subLatDeg": -1.0851
+  },
+  {
+   "jdTT": 2461540.5,
+   "subLonDeg": 4.109162,
+   "subLatDeg": 3.474294
+  },
+  {
+   "jdTT": 2461570.5,
+   "subLonDeg": 6.066469,
+   "subLatDeg": 6.322532
+  },
+  {
+   "jdTT": 2461600.5,
+   "subLonDeg": 6.18222,
+   "subLatDeg": 6.473749
+  },
+  {
+   "jdTT": 2461630.5,
+   "subLonDeg": 4.415761,
+   "subLatDeg": 4.234811
+  },
+  {
+   "jdTT": 2461660.5,
+   "subLonDeg": 1.347196,
+   "subLatDeg": 0.615489
+  },
+  {
+   "jdTT": 2461690.5,
+   "subLonDeg": 357.971443,
+   "subLatDeg": -3.171004
+  },
+  {
+   "jdTT": 2461720.5,
+   "subLonDeg": 355.305605,
+   "subLatDeg": -5.91884
+  },
+  {
+   "jdTT": 2461750.5,
+   "subLonDeg": 354.031544,
+   "subLatDeg": -6.589034
+  }
+ ]
+}

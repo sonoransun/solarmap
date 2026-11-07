@@ -1,0 +1,158 @@
+{
+ "source": "JPL Horizons API, EPHEM_TYPE=ELEMENTS, CENTER=500@10 (Sun centre), REF_PLANE=ECLIPTIC, REF_SYSTEM=ICRF, OUT_UNITS=AU-D, TP_TYPE=ABSOLUTE, CSV_FORMAT=YES, TIME_TYPE=TDB (the only type Horizons accepts for elements; the JD list equals the TT epochs of the VECTORS fixtures, |TDB − TT| ≤ 1.7 ms)",
+ "apiVersion": "1.2",
+ "fetchedAt": "2026-11-07T05:39:16.851Z",
+ "center": "500@10",
+ "timeType": "TDB",
+ "epochs": [
+  2451545,
+  2460000.5,
+  2460676.25,
+  2461297
+ ],
+ "columns": "ec eccentricity; qrAu periapsis distance; inDeg inclination; omDeg longitude of ascending node; wDeg argument of periapsis; tpJd time of periapsis (JD TDB); nDegPerDay mean motion; maDeg mean anomaly; taDeg true anomaly; aAu semi-major axis; adAu apoapsis; prDays period",
+ "bodies": {
+  "mars": {
+   "command": "4",
+   "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%274%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27ELEMENTS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&OUT_UNITS=%27AU-D%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27&TLIST=%272451545.0+2460000.5+2460676.25+2461297.0%27&CSV_FORMAT=%27YES%27&TP_TYPE=%27ABSOLUTE%27",
+   "targetLine": "Target body name: Mars Barycenter (4)             {source: DE441}",
+   "frameLine": "Reference frame : Ecliptic of J2000.0",
+   "unitsLine": "Output units    : AU-D, deg, Julian Day Number (Tp)",
+   "keplerianGmLine": "Keplerian GM    : 2.9591230377960467E-04 au^3/d^2",
+   "keplerianGmAu3D2": 0.00029591230377960467,
+   "rows": [
+    {
+     "jdTdb": 2451545,
+     "ec": 0.09331510156051126,
+     "qrAu": 1.381496732386509,
+     "inDeg": 1.849876455662937,
+     "omDeg": 49.56200645402956,
+     "wDeg": 286.5373814058887,
+     "tpJd": 2451508.062921958,
+     "nDegPerDay": 0.5240393802218966,
+     "maDeg": 19.35648348442421,
+     "taDeg": 23.33319752933276,
+     "aAu": 1.523678992298457,
+     "adAu": 1.665861252210404,
+     "prDays": 686.9712727458829
+    },
+    {
+     "jdTdb": 2460000.5,
+     "ec": 0.09342114253363587,
+     "qrAu": 1.381272162592412,
+     "inDeg": 1.847926036501789,
+     "omDeg": 49.4891597971365,
+     "wDeg": 286.6304236332373,
+     "tpJd": 2459751.893327673,
+     "nDegPerDay": 0.5240752314006761,
+     "maDeg": 130.288599327484,
+     "taDeg": 137.8579360388004,
+     "aAu": 1.523609503151974,
+     "adAu": 1.665946843711536,
+     "prDays": 686.9242781000003
+    },
+    {
+     "jdTdb": 2460676.25,
+     "ec": 0.09343008086194289,
+     "qrAu": 1.381374270377295,
+     "inDeg": 1.847583633205052,
+     "omDeg": 49.4867453225181,
+     "wDeg": 286.7115872763086,
+     "tpJd": 2460439.01422388,
+     "nDegPerDay": 0.5240093752217161,
+     "maDeg": 124.3137708248054,
+     "taDeg": 132.5808133657869,
+     "aAu": 1.523737156082422,
+     "adAu": 1.66610004178755,
+     "prDays": 687.0106090137771
+    },
+    {
+     "jdTdb": 2461297,
+     "ec": 0.09342131993493272,
+     "qrAu": 1.381300502982663,
+     "inDeg": 1.847461217155189,
+     "omDeg": 49.48103203334612,
+     "wDeg": 286.6282378272233,
+     "tpJd": 2461125.806617839,
+     "nDegPerDay": 0.5240589488415704,
+     "maDeg": 89.71542390402439,
+     "taDeg": 100.3651539766415,
+     "aAu": 1.523641062112252,
+     "adAu": 1.665981621241842,
+     "prDays": 686.945620899668
+    }
+   ]
+  },
+  "jupiter": {
+   "command": "5",
+   "url": "https://ssd.jpl.nasa.gov/api/horizons.api?format=text&COMMAND=%275%27&OBJ_DATA=%27NO%27&MAKE_EPHEM=%27YES%27&EPHEM_TYPE=%27ELEMENTS%27&CENTER=%27500%4010%27&REF_PLANE=%27ECLIPTIC%27&REF_SYSTEM=%27ICRF%27&OUT_UNITS=%27AU-D%27&TLIST_TYPE=%27JD%27&TIME_TYPE=%27TDB%27&TLIST=%272451545.0+2460000.5+2460676.25+2461297.0%27&CSV_FORMAT=%27YES%27&TP_TYPE=%27ABSOLUTE%27",
+   "targetLine": "Target body name: Jupiter Barycenter (5)          {source: DE441}",
+   "frameLine": "Reference frame : Ecliptic of J2000.0",
+   "unitsLine": "Output units    : AU-D, deg, Julian Day Number (Tp)",
+   "keplerianGmLine": "Keplerian GM    : 2.9619474286160611E-04 au^3/d^2",
+   "keplerianGmAu3D2": 0.0002961947428616061,
+   "rows": [
+    {
+     "jdTdb": 2451545,
+     "ec": 0.04877487762533089,
+     "qrAu": 4.950429162680248,
+     "inDeg": 1.304625372771513,
+     "omDeg": 100.4916213525931,
+     "wDeg": 275.0660120162461,
+     "tpJd": 2451318.424855789,
+     "nDegPerDay": 0.08305618852833847,
+     "maDeg": 18.81846789343971,
+     "taDeg": 20.73114435871774,
+     "aAu": 5.204266630723374,
+     "adAu": 5.458104098766499,
+     "prDays": 4334.415127623744
+    },
+    {
+     "jdTdb": 2460000.5,
+     "ec": 0.04833295452594871,
+     "qrAu": 4.951011397736636,
+     "inDeg": 1.303573738991771,
+     "omDeg": 100.5175005545181,
+     "wDeg": 273.4636898753359,
+     "tpJd": 2459965.041820553,
+     "nDegPerDay": 0.08309941420643892,
+     "maDeg": 2.946553940849197,
+     "taDeg": 3.249488492928077,
+     "aAu": 5.202461744664494,
+     "adAu": 5.453912091592351,
+     "prDays": 4332.160502427531
+    },
+    {
+     "jdTdb": 2460676.25,
+     "ec": 0.04828789222018726,
+     "qrAu": 4.951203444334048,
+     "inDeg": 1.303574684135002,
+     "omDeg": 100.5181110312196,
+     "wDeg": 273.5179005793058,
+     "tpJd": 2459965.628436943,
+     "nDegPerDay": 0.0831004813568324,
+     "maDeg": 59.05299395258518,
+     "taDeg": 63.94451361681703,
+     "aAu": 5.202417205644665,
+     "adAu": 5.453630966955282,
+     "prDays": 4332.104870177161
+    },
+    {
+     "jdTdb": 2461297,
+     "ec": 0.04827273062282788,
+     "qrAu": 4.951359470844717,
+     "inDeg": 1.303608056012697,
+     "omDeg": 100.5183201266505,
+     "wDeg": 273.5486558744606,
+     "tpJd": 2459965.957045334,
+     "nDegPerDay": 0.08309853912047921,
+     "maDeg": 110.6077250393507,
+     "taDeg": 115.6710697996449,
+     "aAu": 5.202498268316907,
+     "adAu": 5.453637065789097,
+     "prDays": 4332.206123119195
+    }
+   ]
+  }
+ }
+}

@@ -14,8 +14,9 @@ import { jdFromCalendar, ttFromUtc, utcFromTt, deltaTSeconds, calendarFromJd } f
 import { DAY_S } from '../src/astro/constants.js';
 import {
   findEvents, notabilityScore, labelFor, eventKey, KINDS, EXPERIMENTAL_KINDS, MERGE_WINDOWS_D, PARADE_THRESHOLDS_DEG,
-  SCAN_OVERLAP_D, GEO_PARADE_MIN_N,
+  SCAN_OVERLAP_D, GEO_PARADE_MIN_N, BODY_ORDER, LUNAR_KINDS,
 } from '../src/astro/events.js';
+import { SEASON_KINDS } from '../src/astro/seasons.js';
 
 const FIX = JSON.parse(readFileSync(new URL('./fixtures/events.json', import.meta.url), 'utf8'));
 const MARS_ST = JSON.parse(readFileSync(new URL('./fixtures/horizons/mars-stationary-2024.json', import.meta.url), 'utf8'));
@@ -153,13 +154,19 @@ for (const row of FIX.geometric) {
 test('geometric: Venus 2012-06-06 inferior conjunction carries transit=true, score 100 and the transit label', () => {
   const row = FIX.geometric.find((r) => r.kind === 'inferior-conjunction' && r.utc.startsWith('2012'));
   const { ev } = checkRow(row, rowName(row));
-  assert.equal(ev.value.transit, true, 'transit flag: ψ_min < asin(R☉/|E|)');
+  assert.equal(ev.value.transit, true, 'transit flag: ψ_min < asin(R☉/|E|) + asin(R_p/Δ)');
   assert.ok(ev.value.extremumElongationDeg < ev.value.transitLimitDeg, 'ψ_min below the solar semidiameter');
   assert.ok(Math.abs(ev.value.transitLimitDeg - 0.2665) < 0.006, `asin(R☉/|E|) ≈ 0.262–0.271° (final critique), got ${ev.value.transitLimitDeg}`);
+  assert.ok(Math.abs(ev.value.planetSemidiameterDeg * 3600 - 29) < 2, `Venus semidiameter at inferior conjunction ≈ 29″ (got ${(ev.value.planetSemidiameterDeg * 3600).toFixed(1)}″; grazing-transit allowance)`);
   assert.equal(ev.score, 100, 'plan: transit 100');
   assert.match(ev.label, /transit/);
-  // Every other inferior conjunction in 2024–2027 is NOT a transit.
-  for (const e of scanned(WINDOWS[0])) if (e.kind === 'inferior-conjunction') assert.equal(e.value.transit, false, `${e.label} ${fmt(e.jdUtc)}`);
+  // Every other inferior conjunction in 2024–2027 is NOT a transit (the semidiameter allowance never promotes one).
+  for (const e of scanned(WINDOWS[0])) {
+    if (e.kind !== 'inferior-conjunction') continue;
+    assert.equal(e.value.transit, false, `${e.label} ${fmt(e.jdUtc)}`);
+    assert.ok(e.value.extremumElongationDeg > e.value.transitLimitDeg + e.value.planetSemidiameterDeg, 'ψ_min clears both semidiameters');
+    assert.ok(e.value.planetSemidiameterDeg > 2 / 3600 && e.value.planetSemidiameterDeg < 35 / 3600, 'Mercury ≈ 5–6″, Venus ≈ 29–32″');
+  }
 });
 
 test('geometric: five all-8 heliocentric parades exist (existence, not count) and the k=3/4/5 minima', () => {
@@ -186,13 +193,19 @@ test('geometric: five all-8 heliocentric parades exist (existence, not count) an
   assert.ok(all8.length >= 5, `at least the five listed all-8 events (found ${all8.length})`);
 });
 
-test('geometric: Mars stationary points within ±1 d of the Horizons-derived instants (mars-stationary-2024.json)', () => {
+test('geometric: Mars stationary points within ±1 d of the Horizons-derived instants (mars-stationary-2024.json); apparent-longitude detector within 3 h', (t) => {
+  // The fixture instants come from Horizons' apparent ecliptic-of-date longitude (ObsEcLon, light-time + aberration),
+  // the same quantity the detector now differentiates (first-order light-time, aberration, precession rate): the
+  // residuals are ≈ 1 h (the daily finite differences of the fixture itself are only good to that level) where the
+  // geometric-J2000 detector sat 2–5 h away. Plan tolerance ±1 d kept; a 3 h check documents the improvement.
   const ev = scanned(WINDOWS[0]).filter((e) => e.kind === 'stationary' && e.bodies[0] === 'mars');
   assert.equal(MARS_ST.instants.length, 2, 'fixture has two instants');
   for (const inst of MARS_ST.instants) {
     let best, bestD = Infinity;
     for (const e of ev) { const d = Math.abs(e.jdUtc - inst.jdUt); if (d < bestD) { bestD = d; best = e; } }
     assert.ok(best && bestD <= 1, `Mars ${inst.kind} ${inst.iso}: nearest stationary event ${best ? fmt(best.jdUtc) : 'none'} (Δ = ${(bestD * 24).toFixed(1)} h > ±1 d, plan)`);
+    assert.ok(bestD * 24 <= 3, `Mars ${inst.kind} ${inst.iso}: apparent-longitude detector within 3 h (Δ = ${(bestD * 24).toFixed(2)} h)`);
+    t.diagnostic(`Mars ${inst.kind} ${inst.iso}: Δ = ${(bestD * 24 * 60).toFixed(0)} min`);
     assert.equal(best.value.phase, inst.kind, `phase at ${inst.iso}`);
     assert.ok(best.value.elongationDeg > 90, 'Mars is near opposition when stationary');
   }
@@ -281,8 +294,11 @@ test('hygiene: Event shape, sorted output, sorted bodies, ids = dedupe keys, no 
     assert.equal(typeof e.observable, 'boolean');
     assert.equal(e.id, eventKey(e.kind, e.bodies, e.jdTT), 'id is the (kind, sorted bodies, minute) key');
     assert.equal(e.label, labelFor(e.kind, e.bodies, e.value));
-    const order = e.bodies.map((b) => PLANETS.indexOf(b));
-    assert.ok(order.every((o, j) => o >= 0 && (j === 0 || o > order[j - 1])), `bodies sorted Sun-outward: ${e.bodies}`);
+    const order = e.bodies.map((b) => BODY_ORDER.indexOf(b));
+    assert.ok(order.every((o, j) => o >= 0 && (j === 0 || o > order[j - 1])), `bodies sorted Sun-outward (BODY_ORDER: Sun, planets, Moon): ${e.bodies}`);
+    if (LUNAR_KINDS.includes(e.kind)) assert.ok(e.bodies.includes('moon'), `${e.kind} names the Moon`);
+    else if (SEASON_KINDS.includes(e.kind)) assert.deepEqual(e.bodies, ['earth']);
+    else assert.ok(e.bodies.every((b) => PLANETS.includes(b)), `${e.kind}: planets only`);
     if (i > 0) assert.ok(e.jdTT >= ev[i - 1].jdTT, 'sorted by time');
     assert.ok(!ids.has(e.id), `duplicate key ${e.id}`);
     ids.add(e.id);

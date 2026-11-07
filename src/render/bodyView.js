@@ -1,6 +1,6 @@
 // One body on screen: anchor (positioned in AU) → spin (quaternion from the body→ecliptic 3×3) → mesh (unit sphere with
 // the pole on local +Z, scaled (a, a, c)·k) + optional atmosphere shell, Earth clouds, Saturn rings, CSS2D label and a
-// debug overlay (spin axis, prime-meridian great circle, sub-solar dot).
+// debug overlay (spin axis, prime-meridian great circle, sub-solar dot). The Moon is an ordinary rocky body here.
 //
 // r186 facts honoured here (plan §Orientation › Rendering, critique engineering section):
 // - SphereGeometry(1, 64, 32).rotateX(π/2): three builds the sphere with poles on ±Y and the u = 0 seam on −X
@@ -9,34 +9,46 @@
 // - The orientation matrix is row-major body→ecliptic: column 3 = spin axis, column 1 = prime meridian. Matrix4.set()
 //   takes row-major arguments, so the 3×3 is copied verbatim and Quaternion.setFromRotationMatrix gives the spin.
 // - Log depth: the atmosphere/cloud/ring materials (materials.js) are depthWrite:false so the ~5-ulp float32 gap between
-//   a planet and its 1.02 R shell never z-fights; layering is by renderOrder (mesh 0, rings/clouds 1, atmosphere 2).
-// - Sun sprites: Sprite.scale is the full quad width in world units (sprite.glsl: scale *= −mvPosition.z with
-//   sizeAttenuation on), so a sprite of diameter D CSS px at distance d needs scale = D·2·tan(fov/2)·d/H.
+//   a planet and its shells never z-fights; layering is by renderOrder (mesh 0, clouds 1, atmosphere 2, rings 3: the
+//   near ring arc is alpha-blended over the haze that sits in front of the disc, the far arc is depth-rejected by it).
+// - Sun sprites (fallback glare): Sprite.scale is the full quad width in world units (sprite.glsl: scale *= −mvPosition.z
+//   with sizeAttenuation on), so a sprite of diameter D CSS px at distance d needs scale = D·2·tan(fov/2)·d/H.
+// - Per-frame uniforms, all in frames the shaders expect (materials.js): uSunDirView (view space) for the lit
+//   surfaces and clouds; uSunDirObj (spin frame) for the surface's cloud / ring shadows and the rings; the atmosphere
+//   gets the camera position and Sun direction in PLANET units (spin frame divided by the (a, a, c) display scale —
+//   the 3 % oblateness of Jupiter/Saturn is applied as an inverse scale to directions too, ≈ 1° error at most).
+// - Earth's surface reads the cloud layer's photographic sheet / mix for its cloud shadows, Saturn's surface the ring
+//   strip for the rings' shadow: both are mirrored from the sibling material every frame (plain value copies), so
+//   main.js's texture loader and applySurfaceMode() need no knowledge of the shadows.
 
 import {
   Object3D, Mesh, SphereGeometry, RingGeometry, Matrix4, Quaternion, Vector3, BufferGeometry,
   Float32BufferAttribute, Line, LineLoop, LineBasicMaterial, MeshBasicMaterial, MathUtils,
 } from 'three';
 import { createLabel } from './labels.js';
+import { EARTH_CLOUD_SCALE } from './materials.js';
 
 /** IAU 2012 astronomical unit, km (https://ssd.jpl.nasa.gov/astro_par.html). */
 export const AU_KM = 149597870.7;
-/** Bodies that get a fresnel atmosphere shell (plan §Rendering › Bodies). */
+/** Bodies that get an atmosphere shell (plan §Rendering › Bodies; the Moon and Mercury are airless). */
 const ATMOSPHERE_IDS = new Set(['earth', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune']);
-const ATMOSPHERE_SCALE = 1.02;
-const CLOUD_SCALE = 1.006;
+/** Shell factor used when the atmosphere material does not state its own (materials.js uShell). */
+const ATMOSPHERE_SCALE_DEFAULT = 1.06;
+const CLOUD_SCALE = EARTH_CLOUD_SCALE;
 /** Projected-radius threshold (px) for the 128×64 LOD sphere and for drawing the mesh at all. */
 const LOD_HI_PX = 300;
 const MESH_MIN_PX = 0.35;
-/** Sun corona sprite diameters in Sun radii and the on-screen minimum of the glare (CSS px). */
+/** Sun corona sprite diameters in Sun radii and the on-screen minimum of the glare (CSS px) — sprite fallback. */
 const CORONA_DIAM_R = 3.5;
 const GLARE_DIAM_R = 8;
 const GLARE_MIN_PX = 28;
+const GLARE_SPRITE_OPACITY = 0.9;
 
 const _m4 = new Matrix4();
 const _q = new Quaternion();
 const _v = new Vector3();
 const _v2 = new Vector3();
+const _v3 = new Vector3();
 const _sunDir = new Vector3();
 const _scale = new Vector3();
 
@@ -103,14 +115,25 @@ function setVec3(u, name, v) {
  * @property {number} radiusPolarKm
  * @property {number} colour
  * @property {number} priority
- * @property {number} [siderealOrbitDays]
- * @property {{ innerKm: number, outerKm: number }} [rings]
+ * @property {string|null} [parent]   parent body (the Moon's is 'earth'); label proximity rule in labels.js
+ * @property {number|null} [siderealOrbitDays]
+ * @property {{ innerKm: number, outerKm: number }|null} [rings]
+ */
+
+/**
+ * @typedef {object} SunGlare  what `materials.createSunGlare()` returns (B1's HDR billboard, shaders/sunFlare.js)
+ * @property {import('three').Object3D} object  added under the Sun's anchor
+ * @property {(args: { camera: import('three').PerspectiveCamera, pxRadius: number, dispRadiusAu: number,
+ *   viewportH: number, suppression: number, tSeconds: number }) => void} [update]
+ * @property {(x: number) => void} [setSuppression]
+ * @property {() => void} [dispose]
  */
 
 /**
  * @param {BodyDef} bodyDef
  * @param {object} materials  the materials.js module (createPlanetMaterial, createSunMaterial, createCoronaSprites,
- *   createAtmosphereMaterial, createEarthCloudMaterial, createRingMaterial, setMaterialTime)
+ *   createAtmosphereMaterial, createEarthCloudMaterial, createRingMaterial, setRingShadow, setMaterialTime), optionally
+ *   extended with createSunGlare (see SunGlare); without it the Sun keeps the corona/glare sprites.
  */
 export function createBodyView(bodyDef, materials) {
   const id = bodyDef.id;
@@ -128,36 +151,56 @@ export function createBodyView(bodyDef, materials) {
   const ownedGeometries = [];
 
   // --- surface mesh -------------------------------------------------------------------------------------------------
-  const surfaceMaterial = isSun ? materials.createSunMaterial() : materials.createPlanetMaterial(id);
+  const surfaceMaterial = isSun
+    ? materials.createSunMaterial()
+    : materials.createPlanetMaterial(id, { colour: bodyDef.colour });
   ownedMaterials.push(surfaceMaterial);
+  const surfU = uniformsOf(surfaceMaterial);
   const mesh = new Mesh(geo.lo, surfaceMaterial);
   mesh.name = 'mesh:' + id;
   mesh.renderOrder = 0;
-  mesh.frustumCulled = false; // the scaled unit sphere at AU distances: skip the bounding-sphere test (9 draws)
+  mesh.frustumCulled = false; // the scaled unit sphere at AU distances: skip the bounding-sphere test (10 draws)
   spin.add(mesh);
 
-  // --- Sun corona sprites ---------------------------------------------------------------------------------------
+  // --- Sun glare: B1's HDR billboard when provided, else the corona/glare sprites ------------------------------------
   let corona = null;
   let glare = null;
+  /** @type {SunGlare|null} */
+  let glareRig = null;
+  let glareSuppression = 0;
   if (isSun) {
-    const sprites = materials.createCoronaSprites();
-    corona = sprites.corona;
-    glare = sprites.glare;
-    corona.name = 'corona';
-    glare.name = 'glare';
-    corona.renderOrder = 3;
-    glare.renderOrder = 3;
-    corona.frustumCulled = false;
-    glare.frustumCulled = false;
-    anchor.add(corona, glare);
-    ownedMaterials.push(corona.material, glare.material);
+    if (typeof materials.createSunGlare === 'function') {
+      glareRig = materials.createSunGlare({ radiusKm: bodyDef.radiusEqKm, colour: bodyDef.colour });
+      const obj = glareRig?.object ?? glareRig?.group ?? glareRig?.mesh ?? (glareRig?.isObject3D ? glareRig : null);
+      if (obj) {
+        obj.name = 'sun-glare';
+        obj.renderOrder = 3;
+        obj.frustumCulled = false;
+        anchor.add(obj);
+      }
+    } else {
+      const sprites = materials.createCoronaSprites();
+      corona = sprites.corona;
+      glare = sprites.glare;
+      corona.name = 'corona';
+      glare.name = 'glare';
+      corona.renderOrder = 3;
+      glare.renderOrder = 3;
+      corona.frustumCulled = false;
+      glare.frustumCulled = false;
+      anchor.add(corona, glare);
+      ownedMaterials.push(corona.material, glare.material);
+    }
   }
 
-  // --- atmosphere shell -------------------------------------------------------------------------------------------
+  // --- atmosphere shell (FrontSide, exponential scale height; the mesh scale comes from the material's uShell) --------
   let atmosphere = null;
+  let atmosphereScale = ATMOSPHERE_SCALE_DEFAULT;
   if (!isSun && ATMOSPHERE_IDS.has(id) && typeof materials.createAtmosphereMaterial === 'function') {
     const m = materials.createAtmosphereMaterial(id);
     ownedMaterials.push(m);
+    const shell = uniformsOf(m)?.uShell?.value;
+    if (shell > 1) atmosphereScale = shell;
     atmosphere = new Mesh(geo.lo, m);
     atmosphere.name = 'atmosphere:' + id;
     atmosphere.renderOrder = 2;
@@ -186,13 +229,19 @@ export function createBodyView(bodyDef, materials) {
     ringOuterR = bodyDef.rings.outerKm / bodyDef.radiusEqKm;
     const rg = new RingGeometry(ringInnerR, ringOuterR, 256, 1);
     ownedGeometries.push(rg);
-    const m = materials.createRingMaterial({ innerR: ringInnerR, outerR: ringOuterR });
+    const m = materials.createRingMaterial({ innerR: ringInnerR, outerR: ringOuterR, polarRatio });
     ownedMaterials.push(m);
     rings = new Mesh(rg, m);
     rings.name = 'rings:' + id;
-    rings.renderOrder = 1;
+    rings.renderOrder = 3;
     rings.frustumCulled = false;
     spin.add(rings);
+    // the rings' shadow on the globe shares the ring material's opacity law and seed
+    if (typeof materials.setRingShadow === 'function') {
+      materials.setRingShadow(surfaceMaterial, {
+        innerR: ringInnerR, outerR: ringOuterR, polarRatio, seed: uniformsOf(m)?.uSeed?.value,
+      });
+    }
   }
 
   // --- label ---------------------------------------------------------------------------------------------------------
@@ -273,6 +322,20 @@ export function createBodyView(bodyDef, materials) {
     }
   }
 
+  /**
+   * Glare suppression 0…1 (1 = no glare), e.g. while the solar disc is large on screen or during a transit chapter.
+   * @param {number} x
+   */
+  function setGlareSuppression(x) {
+    glareSuppression = Math.min(1, Math.max(0, x || 0));
+    if (glareRig) {
+      if (typeof glareRig.setSuppression === 'function') glareRig.setSuppression(glareSuppression);
+    } else if (glare) {
+      glare.material.opacity = GLARE_SPRITE_OPACITY * (1 - glareSuppression);
+      corona.material.opacity = 1 - 0.6 * glareSuppression;
+    }
+  }
+
   // --- per-frame update -------------------------------------------------------------------------------------------
   let hiLod = false;
   let lastR = -1;
@@ -300,7 +363,7 @@ export function createBodyView(bodyDef, materials) {
     if (a !== lastR) {
       lastR = a;
       mesh.scale.set(a, a, c);
-      if (atmosphere) atmosphere.scale.set(a * ATMOSPHERE_SCALE, a * ATMOSPHERE_SCALE, c * ATMOSPHERE_SCALE);
+      if (atmosphere) atmosphere.scale.set(a * atmosphereScale, a * atmosphereScale, c * atmosphereScale);
       if (clouds) clouds.scale.set(a * CLOUD_SCALE, a * CLOUD_SCALE, c * CLOUD_SCALE);
       if (rings) rings.scale.set(a, a, a);
       if (debug) {
@@ -343,17 +406,26 @@ export function createBodyView(bodyDef, materials) {
     if (isSun) {
       // Close up, the photosphere is the subject: ease the HDR level down so bloom stops clipping the disc to
       // white and the granulation stays readable. Far away the full HDR level keeps the glow and bloom.
-      const u = uniformsOf(surfaceMaterial);
-      if (u && u.uIntensity) {
+      if (surfU && surfU.uIntensity) {
         const t = Math.min(1, Math.max(0, (pxRadius - 30) / 320));
-        u.uIntensity.value = 1 - 0.62 * t * t * (3 - 2 * t);
+        surfU.uIntensity.value = 1 - 0.62 * t * t * (3 - 2 * t);
       }
     }
     if (haveSun && camera) {
       _v.copy(_sunDir).transformDirection(camera.matrixWorldInverse); // view space, unit
-      setVec3(uniformsOf(surfaceMaterial), 'uSunDirView', _v);
+      _q.copy(spin.quaternion).invert();
+      _v2.copy(_sunDir).applyQuaternion(_q);                          // spin frame (= unscaled object space), unit
+      setVec3(surfU, 'uSunDirView', _v);
+      setVec3(surfU, 'uSunDirObj', _v2);
       if (atmosphere) {
-        setVec3(uniformsOf(atmosphere.material), 'uSunDirView', _v);
+        const u = uniformsOf(atmosphere.material);
+        // planet units: spin frame divided by the (a, a, c) display scale
+        _v3.copy(camera.position).sub(anchor.position).applyQuaternion(_q);
+        _v3.x /= a; _v3.y /= a; _v3.z /= c;
+        setVec3(u, 'uCamPosObj', _v3);
+        _v3.set(_v2.x / a, _v2.y / a, _v2.z / c).normalize();
+        setVec3(u, 'uSunDirObj', _v3);
+        setVec3(u, 'uSunDirView', _v);
         if (setTime) materials.setMaterialTime(atmosphere.material, tSeconds);
       }
       if (clouds) {
@@ -363,25 +435,48 @@ export function createBodyView(bodyDef, materials) {
       if (rings) {
         const u = uniformsOf(rings.material);
         if (u) {
-          _q.copy(spin.quaternion).invert();
-          _v2.copy(_sunDir).applyQuaternion(_q); // ring object space (= spin frame)
           setVec3(u, 'uSunDirObj', _v2);
           setVec3(u, 'uLightDirObj', _v2);
           setVec3(u, 'uSunDirView', _v);
-          _v2.copy(camera.position).sub(anchor.position).applyQuaternion(_q).divideScalar(a); // planet radii
-          setVec3(u, 'uCamPosObj', _v2);
+          _v3.copy(camera.position).sub(anchor.position).applyQuaternion(_q).divideScalar(a); // planet radii
+          setVec3(u, 'uCamPosObj', _v3);
           if (setTime) materials.setMaterialTime(rings.material, tSeconds);
         }
       }
     }
+    // Earth: the surface's cloud shadows follow the cloud layer's current sheet (photographic or procedural).
+    if (clouds && surfU && surfU.uCloudMap) {
+      const cu = uniformsOf(clouds.material);
+      surfU.uCloudMap.value = clouds.material.map;
+      surfU.uCloudMix.value = clouds.material.map && cu && cu.uTexMix ? cu.uTexMix.value : 0;
+    }
+    // Saturn: the rings' shadow follows the ring material's strip / mix.
+    if (rings && surfU && surfU.uRingTex) {
+      const ru = uniformsOf(rings.material);
+      if (ru) {
+        surfU.uRingTex.value = ru.uRingTex ? ru.uRingTex.value : null;
+        surfU.uRingTexMix.value = ru.uTexMix ? ru.uTexMix.value : 0;
+      }
+    }
 
-    // Sun glare: keep ≥ 28 CSS px on screen so it glows from afar
+    // Sun glare
     if (isSun && camera) {
-      const d = camera.position.distanceTo(anchor.position);
-      const tanHalf = Math.tan(MathUtils.DEG2RAD * camera.fov * 0.5);
-      const H = viewportH || 1;
-      const minScale = GLARE_MIN_PX * 2 * tanHalf * d / H;
-      glare.scale.setScalar(Math.max(GLARE_DIAM_R * a, minScale));
+      if (glareRig) {
+        if (typeof glareRig.update === 'function') {
+          // sunGlare.js reads `sunPxRadius`; `pxRadius` is kept for any other implementation of the contract.
+          glareRig.update({
+            camera, sunPxRadius: pxRadius, pxRadius, dispRadiusAu: a, viewportH: viewportH || 1,
+            suppression: glareSuppression, tSeconds,
+          });
+        }
+      } else if (glare) {
+        // sprite fallback: keep ≥ 28 CSS px on screen so it glows from afar
+        const d = camera.position.distanceTo(anchor.position);
+        const tanHalf = Math.tan(MathUtils.DEG2RAD * camera.fov * 0.5);
+        const H = viewportH || 1;
+        const minScale = GLARE_MIN_PX * 2 * tanHalf * d / H;
+        glare.scale.setScalar(Math.max(GLARE_DIAM_R * a, minScale));
+      }
       mesh.visible = drawMesh;
     }
 
@@ -398,6 +493,7 @@ export function createBodyView(bodyDef, materials) {
     labelHandle.dispose();
     for (const m of ownedMaterials) m?.dispose?.();
     for (const g of ownedGeometries) g.dispose();
+    if (glareRig && typeof glareRig.dispose === 'function') glareRig.dispose();
     if (debug) {
       for (const m of debug.materials) m.dispose();
       for (const g of debug.geometries) g.dispose();
@@ -416,12 +512,15 @@ export function createBodyView(bodyDef, materials) {
     rings,
     corona,
     glare,
+    glareRig,
     label: labelHandle.object,
     labelHandle,
     ringInnerR,
     ringOuterR,
     update,
     setDebug,
+    setGlareSuppression,
+    get glareSuppression() { return glareSuppression; },
     dispose,
   };
 }

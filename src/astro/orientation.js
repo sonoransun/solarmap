@@ -8,19 +8,23 @@
 //
 // Earth: the 2015 IAU report gives no Earth expressions (footnote 2 — "their accuracy was poor"; the IAU 2009 W puts
 // the sub-solar longitude 0.3–0.4° off, judges' critique byf0bzyiw.txt), so
-//   M_earth→ecl = EQ_TO_ECL · P(T)ᵀ · R_z(GMST(UT1))
-// with P = IAU 1976 precession (frames.js) and GMST = IAU 1982 (time.js). Greenwich lies at RA = GMST measured from the
-// mean equinox of DATE; Pᵀ carries that direction back to J2000 (without it the 2023/2026 fixtures are 0.30°/0.34°
-// off). Nutation, DUT1 and the frame bias are neglected (measured residual ≤ 0.0084° lon / ≤ 0.005° lat, critique).
+//   M_earth→ecl = EQ_TO_ECL · P(T)ᵀ · N(T)ᵀ · R_z(GAST(UT1, TT))
+// with P = IAU 1976 precession (frames.js), N = IAU 1980 nutation (nutation.js) and GAST = GMST (IAU 1982, time.js)
+// + Δψ cos ε (equation of the equinoxes, Meeus p. 88). Greenwich lies at RA = GAST measured from the TRUE equinox of
+// DATE along the true equator; Nᵀ Pᵀ carry that direction back to J2000 (without P the 2023/2026 fixtures are
+// 0.30°/0.34° off; nutation moves the pole by ≤ 17″ and Greenwich by ≤ 1.1 s of time). DUT1 and the frame bias are
+// neglected. The Moon uses the IAU 2015 Table 2 elements (bodies.js) through the same generic path as the planets
+// (with the −1.4e-12 d² term of W).
 //
-// Times: jdTT drives the IAU elements (their epoch is TDB; |TDB − TT| ≤ 1.7 ms ≈ 2e-5° of Jupiter's W, ignored) and the
-// precession; jdUT1 (≈ UTC, |UT1 − UTC| < 0.9 s ≈ 0.004°) drives Earth's spin only.
+// Times: jdTT drives the IAU elements (their epoch is TDB; |TDB − TT| ≤ 1.7 ms ≈ 2e-5° of Jupiter's W, ignored),
+// the precession and the nutation; jdUT1 (≈ UTC, |UT1 − UTC| < 0.9 s ≈ 0.004°) drives Earth's spin only.
 //
 // All matrices are 3×3 row-major arrays acting on column vectors (vec.js conventions); angles in radians.
 import { J2000, DAYS_PER_CENTURY, DEG, RAD } from './constants.js';
 import { wrap360, wrap180, angleBetween } from './vec.js';
-import { EQ_TO_ECL, precessionMatrix, precessionAngles } from './frames.js';
-import { gmstRad, utcFromTt } from './time.js';
+import { EQ_TO_ECL, ECL_TO_EQ, precessionMatrix } from './frames.js';
+import { utcFromTt } from './time.js';
+import { nutationMatrix, gastRad } from './nutation.js';
 import { body } from './bodies.js';
 
 /** @typedef {import('./bodies.js').PeriodicTerm} PeriodicTerm */
@@ -67,6 +71,7 @@ function zxz(a, b, c, out) {
 // Module-level scratch (allocation-free per-frame path; not re-entrant, which is fine for single-threaded callers —
 // workers get their own module instance).
 const SCRATCH_M = new Float64Array(9);
+const SCRATCH_Q = new Float64Array(9);
 const SCRATCH_ELEM = { alpha0: 0, delta0: 0, W: 0 };
 const SCRATCH_POLE = [0, 0, 0];
 const SCRATCH_NORMAL = [0, 0, 0];
@@ -92,16 +97,38 @@ function periodicSum(terms, fn, d, T) {
 }
 
 /**
+ * IAU-form elements {α0, δ0, W} of an ICRF-equatorial body→inertial rotation Q = R_z(α0 + 90°)·R_x(90° − δ0)·R_z(W):
+ * the pole is column 3 (α0 = atan2(Q₁₂, Q₀₂), δ0 = asin(Q₂₂)), the node Q = α0 + 90° is q = (−sin α0, cos α0, 0) and
+ * W is the right-handed angle about the pole from q to the prime meridian p = column 1: W = atan2((q × p)·pole, q·p).
+ * Exact inverse of the ZXZ product for any proper rotation (used for the Earth, whose matrix is built from precession,
+ * nutation and GAST rather than from tabulated elements).
+ * @param {ArrayLike<number>} Q @param {RotationElements} out @returns {RotationElements}
+ */
+function elementsFromMatrix(Q, out) {
+  const px = Q[2], py = Q[5], pz = Q[8];
+  const alpha0 = Math.atan2(py, px);
+  const qx = -Math.sin(alpha0), qy = Math.cos(alpha0);
+  const mx = Q[0], my = Q[3], mz = Q[6];
+  // (q × m)·pole with q_z = 0: q × m = (qy mz, −qx mz, qx my − qy mx)
+  const sinW = (qy * mz) * px + (-qx * mz) * py + (qx * my - qy * mx) * pz;
+  const cosW = qx * mx + qy * my;
+  out.alpha0 = wrap360(alpha0 * RAD) * DEG;
+  out.delta0 = Math.asin(pz > 1 ? 1 : pz < -1 ? -1 : pz);
+  out.W = wrap360(Math.atan2(sinW, cosW) * RAD) * DEG;
+  return out;
+}
+
+/**
  * Rotational elements {α0, δ0, W} in radians at jdTT. IAU bodies: bodies.js expressions with d = jdTT − 2451545 and
- * T = d/36525, periodic terms included; α0 and W are reduced to [0, 2π), δ0 is left signed. Earth: the exact IAU-form
- * equivalent of the GMST + precession matrix, from Pᵀ·R_z(θ) = R_z(−ζ)·R_y(θ_A)·R_z(θ − z) and
- * R_y(β) = R_z(90°)·R_x(β)·R_z(−90°), which gives α0 = −ζ_A, δ0 = 90° − θ_A, W = GMST − 90° − z_A (the "W_E =
- * GMST − 90° − α0 − (ζ_A + z_A)" form of the judges' critique b1p4znxk4.txt, since α0 = −ζ_A). At J2000 this is the
- * usual W_E = GMST − 90° = 190.46°.
+ * T = d/36525, periodic terms (and the Moon's d² term of W) included; α0 and W are reduced to [0, 2π), δ0 is left
+ * signed. Earth: the exact IAU-form decomposition (elementsFromMatrix) of Pᵀ·Nᵀ·R_z(GAST) — the TRUE pole of date in
+ * ICRF coordinates (α0 ≈ −ζ_A, δ0 ≈ 90° − θ_A, both displaced by the nutation ≤ 17″) and W = angle from the node to
+ * Greenwich; without nutation this reduces to the critique's W_E = GMST − 90° − z_A (b1p4znxk4.txt), which at J2000
+ * is the usual W_E = GMST − 90° = 190.46°.
  * @param {string} id body id
  * @param {number} jdTT Julian date (TT)
  * @param {RotationElements} [out] reused result object
- * @param {number} [jdUT1] Earth only: JD(UT1 ≈ UTC) for GMST; defaults to utcFromTt(jdTT)
+ * @param {number} [jdUT1] Earth only: JD(UT1 ≈ UTC) for GAST; defaults to utcFromTt(jdTT)
  * @returns {RotationElements}
  */
 export function rotationElements(id, jdTT, out = { alpha0: 0, delta0: 0, W: 0 }, jdUT1) {
@@ -109,16 +136,13 @@ export function rotationElements(id, jdTT, out = { alpha0: 0, delta0: 0, W: 0 },
   const d = jdTT - J2000;
   const T = d / DAYS_PER_CENTURY;
   if (rot.model === 'gmst') {
-    const { zeta, z, theta } = precessionAngles(T);
-    const theta0 = gmstRad(jdUT1 === undefined ? utcFromTt(jdTT) : jdUT1);
-    out.alpha0 = wrap360(-zeta * RAD) * DEG;
-    out.delta0 = HALF_PI - theta;
-    out.W = wrap360((theta0 - z) * RAD - 90) * DEG;
-    return out;
+    earthToEcliptic(jdTT, jdUT1 === undefined ? utcFromTt(jdTT) : jdUT1, SCRATCH_M);
+    mul3(ECL_TO_EQ, SCRATCH_M, SCRATCH_Q); // Q = ECL_TO_EQ · M = Pᵀ·Nᵀ·R_z(GAST)
+    return elementsFromMatrix(SCRATCH_Q, out);
   }
   let a = rot.alpha0[0] + rot.alpha0[1] * T;
   let dec = rot.delta0[0] + rot.delta0[1] * T;
-  let w = rot.w[0] + rot.w[1] * d;
+  let w = rot.w[0] + rot.w[1] * d + (rot.wQuad === undefined ? 0 : rot.wQuad * d * d);
   const p = rot.periodic;
   if (p !== undefined) {
     a += periodicSum(p.alpha0, Math.sin, d, T);
@@ -132,14 +156,14 @@ export function rotationElements(id, jdTT, out = { alpha0: 0, delta0: 0, W: 0 },
 }
 
 /**
- * ICRF right ascension / declination of the north pole in degrees (Bodies-tab readout). Earth: mean pole of date
- * expressed in ICRF (precession only).
+ * ICRF right ascension / declination of the north pole in degrees (Bodies-tab readout). Earth: TRUE pole of date
+ * (precession + nutation) expressed in ICRF.
  * @param {string} id @param {number} jdTT
  * @param {{raDeg: number, decDeg: number}} [out]
  * @returns {{raDeg: number, decDeg: number}}
  */
 export function poleRaDec(id, jdTT, out = { raDeg: 0, decDeg: 0 }) {
-  // For Earth the GMST argument does not affect the pole; jdTT is passed as the UT1 stand-in to skip utcFromTt.
+  // For Earth the GAST argument does not affect the pole; jdTT is passed as the UT1 stand-in to skip utcFromTt.
   const e = rotationElements(id, jdTT, SCRATCH_ELEM, jdTT);
   out.raDeg = e.alpha0 * RAD;
   out.decDeg = e.delta0 * RAD;
@@ -150,30 +174,34 @@ export function poleRaDec(id, jdTT, out = { raDeg: 0, decDeg: 0 }) {
 // Body → ecliptic rotation matrices
 // ---------------------------------------------------------------------------------------------------------------------
 
-// Earth: EQ_TO_ECL · P(T)ᵀ cached on jdTT (precession changes 0.05″/day; the cache only avoids frames.precessionMatrix's
-// small allocations while the clock is paused — while playing it is rebuilt once per frame for Earth only).
+// Earth: EQ_TO_ECL · P(T)ᵀ · N(T)ᵀ cached on jdTT (precession changes 0.05″/day, nutation < 0.01″/day; the cache
+// avoids frames.precessionMatrix's small allocations while the clock is paused — while playing it is rebuilt once per
+// frame for Earth only).
 const EARTH_EP = new Float64Array(9);
+const EARTH_N = new Float64Array(9);
+const EARTH_NP = new Float64Array(9);
 let earthEpJd = NaN;
 
 /**
  * @param {number} jdTT @param {number} jdUT1 @param {number[]|Float64Array} out
- * @returns {number[]|Float64Array} EQ_TO_ECL · P(T)ᵀ · R_z(GMST(jdUT1))
+ * @returns {number[]|Float64Array} EQ_TO_ECL · P(T)ᵀ · N(T)ᵀ · R_z(GAST(jdUT1, jdTT))
  */
 function earthToEcliptic(jdTT, jdUT1, out) {
   if (jdTT !== earthEpJd) {
     const P = precessionMatrix((jdTT - J2000) / DAYS_PER_CENTURY);
-    // (E · Pᵀ)[i][j] = Σ_k E[i][k] · P[j][k]
+    const NP = mul3(nutationMatrix(jdTT, EARTH_N), P, EARTH_NP); // N·P: J2000 → true equator/equinox of date
+    // (E · (NP)ᵀ)[i][j] = Σ_k E[i][k] · NP[j][k]
     const E = EQ_TO_ECL;
     for (let i = 0; i < 3; i++) {
       const e0 = E[3 * i], e1 = E[3 * i + 1], e2 = E[3 * i + 2];
-      EARTH_EP[3 * i] = e0 * P[0] + e1 * P[1] + e2 * P[2];
-      EARTH_EP[3 * i + 1] = e0 * P[3] + e1 * P[4] + e2 * P[5];
-      EARTH_EP[3 * i + 2] = e0 * P[6] + e1 * P[7] + e2 * P[8];
+      EARTH_EP[3 * i] = e0 * NP[0] + e1 * NP[1] + e2 * NP[2];
+      EARTH_EP[3 * i + 1] = e0 * NP[3] + e1 * NP[4] + e2 * NP[5];
+      EARTH_EP[3 * i + 2] = e0 * NP[6] + e1 * NP[7] + e2 * NP[8];
     }
     earthEpJd = jdTT;
   }
-  // out = EP · R_z(θ) with R_z(θ) = [[c, −s, 0], [s, c, 0], [0, 0, 1]]
-  const th = gmstRad(jdUT1);
+  // out = EP · R_z(θ) with R_z(θ) = [[c, −s, 0], [s, c, 0], [0, 0, 1]], θ = GAST
+  const th = gastRad(jdUT1, jdTT);
   const c = Math.cos(th), s = Math.sin(th);
   for (let i = 0; i < 3; i++) {
     const m0 = EARTH_EP[3 * i], m1 = EARTH_EP[3 * i + 1];
@@ -187,10 +215,10 @@ function earthToEcliptic(jdTT, jdUT1, out) {
 /**
  * Body-fixed → scene (ecliptic J2000) rotation, 3×3 row-major. Column 1 = prime meridian (+X of the body), column 3 =
  * north pole (+Z of the body); the renderer sets the mesh quaternion from it (pole on local +Z, u = 0.5 seam on +X).
- * Non-Earth: EQ_TO_ECL · R_z(α0 + 90°) · R_x(90° − δ0) · R_z(W). Earth: EQ_TO_ECL · P(T)ᵀ · R_z(GMST(jdUT1)).
- * Allocation-free when `out` is supplied.
+ * Non-Earth (planets, Sun, Moon): EQ_TO_ECL · R_z(α0 + 90°) · R_x(90° − δ0) · R_z(W).
+ * Earth: EQ_TO_ECL · P(T)ᵀ · N(T)ᵀ · R_z(GAST(jdUT1, jdTT)). Allocation-free when `out` is supplied.
  * @param {string} id body id
- * @param {number} jdTT Julian date (TT) — elements and precession
+ * @param {number} jdTT Julian date (TT) — elements, precession and nutation
  * @param {number} [jdUT1] Julian date (UT1 ≈ UTC) — Earth's spin only; defaults to utcFromTt(jdTT)
  * @param {number[]|Float64Array} [out] reused length-9 array
  * @returns {number[]|Float64Array}
@@ -248,8 +276,18 @@ export function subSolarPoint(id, pos, jdTT, jdUT1, out = { latDeg: 0, lonDeg: 0
   if (typeof pos.x === 'number') { x = pos.x; y = pos.y; z = pos.z; } else { x = pos[0]; y = pos[1]; z = pos[2]; }
   const r = Math.hypot(x, y, z);
   if (!(r > 0)) { out.latDeg = NaN; out.lonDeg = NaN; return out; }
+  return subPoint(id, -x / r, -y / r, -z / r, jdTT, jdUT1, out);
+}
+
+/**
+ * Body-fixed latitude/longitude of the point under a unit direction u (scene frame): s = Mᵀ·u, lat = asin(s_z),
+ * lon = atan2(s_y, s_x) EAST of the prime meridian in (−180°, 180°] (planetocentric; Horizons prints the same
+ * quantity planetodetic and, for the prograde planets, WEST-positive — see test/orientation.test.mjs).
+ * @param {string} id @param {number} ux @param {number} uy @param {number} uz @param {number} jdTT @param {number} [jdUT1]
+ * @param {{latDeg: number, lonDeg: number}} out @returns {{latDeg: number, lonDeg: number}}
+ */
+function subPoint(id, ux, uy, uz, jdTT, jdUT1, out) {
   const M = bodyToEcliptic(id, jdTT, jdUT1, SCRATCH_M);
-  const ux = -x / r, uy = -y / r, uz = -z / r;
   // s = Mᵀ · u  →  s_i = Σ_j M[j][i] u_j
   const sx = M[0] * ux + M[3] * uy + M[6] * uz;
   const sy = M[1] * ux + M[4] * uy + M[7] * uz;
@@ -257,6 +295,28 @@ export function subSolarPoint(id, pos, jdTT, jdUT1, out = { latDeg: 0, lonDeg: 0
   out.latDeg = Math.asin(sz > 1 ? 1 : sz < -1 ? -1 : sz) * RAD;
   out.lonDeg = wrap180(Math.atan2(sy, sx) * RAD);
   return out;
+}
+
+/**
+ * Sub-Earth point (the disc centre seen from the Earth; for the Moon the optical + physical libration): body-fixed
+ * latitude/longitude of the direction body → Earth, geometric (Horizons' ObsSub-LON/LAT rotate the body at the
+ * retarded time t − τ: pass jdTT − lightTimeDays to reproduce them, test/orientation.test.mjs).
+ * @param {string} id body id
+ * @param {PosLike|ArrayLike<number>} pos heliocentric position of the body (AU, scene frame)
+ * @param {PosLike|ArrayLike<number>} earthPos heliocentric position of the Earth (AU)
+ * @param {number} jdTT Julian date (TT) of the body's rotation state
+ * @param {number} [jdUT1] Earth only (meaningless here; kept for signature symmetry)
+ * @param {{latDeg: number, lonDeg: number}} [out]
+ * @returns {{latDeg: number, lonDeg: number}} degrees, longitude east-positive in (−180°, 180°]
+ */
+export function subEarthPoint(id, pos, earthPos, jdTT, jdUT1, out = { latDeg: 0, lonDeg: 0 }) {
+  let x, y, z, ex, ey, ez;
+  if (typeof pos.x === 'number') { x = pos.x; y = pos.y; z = pos.z; } else { x = pos[0]; y = pos[1]; z = pos[2]; }
+  if (typeof earthPos.x === 'number') { ex = earthPos.x; ey = earthPos.y; ez = earthPos.z; } else { ex = earthPos[0]; ey = earthPos[1]; ez = earthPos[2]; }
+  const dx = ex - x, dy = ey - y, dz = ez - z;
+  const r = Math.hypot(dx, dy, dz);
+  if (!(r > 0)) { out.latDeg = NaN; out.lonDeg = NaN; return out; }
+  return subPoint(id, dx / r, dy / r, dz / r, jdTT, jdUT1, out);
 }
 
 /**

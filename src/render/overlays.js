@@ -1,8 +1,12 @@
 // Scene overlays: the alignment overlay for the active event (faint Sun→body lines for oppositions / conjunctions /
 // parades / apsides, or Earth→pair rays for planet pairs and geocentric parades) with a CSS2D label whose opacity the
 // caller sets ∝ time proximity, and the distance beam (dashed accent line between two bodies + a mid-point CSS2D chip).
-// Geometry is preallocated; update(positions) rewrites the vertex arrays in place every frame so the lines follow the
-// moving bodies. Line.computeLineDistances() allocates in r186, so the beam's lineDistance attribute is written by hand.
+// Geometry is preallocated; update(positions) — called ONCE per frame by scene.update() — rewrites the vertex arrays in
+// place so the lines follow the moving bodies. Line.computeLineDistances() allocates in r186, so the beam's lineDistance
+// attribute is written by hand. showAlignment() / setBeam() may be called every frame with the same arguments: DOM text
+// is only written when it changes (a textContent write forces style recalculation), and showAlignment refreshes the
+// geometry immediately only when the overlay is newly shown or its bodies changed.
+// Class names are what scene.css styles: .ovl-lbl (alignment caption) and .beam-chip (> .chip-main, > .chip-sub).
 
 import {
   Group, BufferGeometry, BufferAttribute, LineSegments, Line, LineBasicMaterial, LineDashedMaterial,
@@ -54,6 +58,17 @@ export function isEarthRayKind(kind, bodies) {
 }
 
 /**
+ * Shallow equality of two id lists (no allocation).
+ * @param {string[]} a @param {string[]} b
+ */
+function sameIds(a, b) {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/**
  * @param {{ bodies?: Array<{ id: string }> }} [opts]
  */
 export function createOverlays({ bodies = [] } = {}) {
@@ -86,6 +101,8 @@ export function createOverlays({ bodies = [] } = {}) {
   alignLabel.center.set(0.5, 1.4);
   alignLabel.visible = false;
   group.add(alignLabel);
+  let alignText = '';
+  let alignOpacityText = '';
 
   const alignment = {
     active: false,
@@ -118,38 +135,58 @@ export function createOverlays({ bodies = [] } = {}) {
   chipEl.className = 'beam-chip';
   chipEl.style.pointerEvents = 'none';
   chipEl.setAttribute('role', 'note');
+  const chipMain = document.createElement('span');
+  chipMain.className = 'chip-main';
+  const chipSub = document.createElement('span');
+  chipSub.className = 'chip-sub';
+  chipSub.hidden = true;
+  chipEl.append(chipMain, chipSub);
   const chip = new CSS2DObject(chipEl);
   chip.name = 'beam-chip';
   chip.center.set(0.5, 1.3);
   chip.visible = false;
   group.add(chip);
+  let chipMainText = '';
+  let chipSubText = '';
 
   const beam = { a: /** @type {string|null} */ (null), b: /** @type {string|null} */ (null) };
 
   /**
-   * Show the alignment overlay for an event.
+   * Show the alignment overlay for an event. Safe to call every frame with the same event: text and geometry are
+   * only refreshed when something changed (the per-frame follow happens in update()).
    * @param {{ kind: string, bodies: string[], positions?: any, opacity?: number, label?: string, mode?: 'sun'|'earth' }} ev
    */
   function showAlignment({ kind, bodies: evBodies, positions, opacity = 1, label = '', mode }) {
+    const list = Array.isArray(evBodies) ? evBodies : [];
+    const fresh = !alignment.active || alignment.kind !== kind || !sameIds(alignment.bodies, list);
     alignment.active = true;
     alignment.kind = kind;
-    alignment.bodies = Array.isArray(evBodies) ? evBodies : [];
+    if (!sameIds(alignment.bodies, list)) alignment.bodies = list;
     alignment.mode = mode ?? (isEarthRayKind(kind, alignment.bodies) ? 'earth' : 'sun');
     setAlignmentOpacity(opacity);
-    alignEl.textContent = label || '';
-    alignLabel.visible = !!label;
+    const text = label || '';
+    if (text !== alignText) {
+      alignText = text;
+      alignEl.textContent = text;
+    }
+    alignLabel.visible = !!text;
     alignLines.visible = true;
-    if (positions) update(positions);
+    if (fresh && positions) update(positions);
   }
 
   /** @param {number} opacity 0…1 (∝ time proximity, set by the caller) */
   function setAlignmentOpacity(opacity) {
     alignment.opacity = Math.max(0, Math.min(1, opacity));
     alignMaterial.opacity = 0.35 * alignment.opacity;
-    alignEl.style.opacity = alignment.opacity.toFixed(2);
+    const txt = alignment.opacity.toFixed(2);
+    if (txt !== alignOpacityText) {
+      alignOpacityText = txt;
+      alignEl.style.opacity = txt;
+    }
   }
 
   function hideAlignment() {
+    if (!alignment.active && !alignLines.visible) return;
     alignment.active = false;
     alignLines.visible = false;
     alignLabel.visible = false;
@@ -160,7 +197,8 @@ export function createOverlays({ bodies = [] } = {}) {
    * Distance beam between two bodies (null hides it).
    * @param {string|null} idA
    * @param {string|null} idB
-   * @param {string|null} [label] chip text, e.g. "0.5234 AU · 78.30 M km · 4 min 21 s"
+   * @param {string|{ main: string, sub?: string }|null} [label] chip text — a string, or { main, sub } for a two-line
+   *   chip (e.g. main "78.3 million km", sub "4 min 21 s of light travel")
    */
   function setBeam(idA, idB, label = null) {
     if (!idA || !idB || idA === idB) {
@@ -175,10 +213,18 @@ export function createOverlays({ bodies = [] } = {}) {
     setBeamLabel(label);
   }
 
-  /** @param {string|null} text */
+  /**
+   * Chip text. DOM writes happen only on change.
+   * @param {string|{ main: string, sub?: string }|null} text
+   */
   function setBeamLabel(text) {
-    chipEl.textContent = text || '';
-    chip.visible = !!text && beam.a !== null;
+    let main = '';
+    let sub = '';
+    if (typeof text === 'string') main = text;
+    else if (text && typeof text === 'object') { main = text.main || ''; sub = text.sub || ''; }
+    if (main !== chipMainText) { chipMainText = main; chipMain.textContent = main; }
+    if (sub !== chipSubText) { chipSubText = sub; chipSub.textContent = sub; chipSub.hidden = !sub; }
+    chip.visible = !!main && beam.a !== null;
   }
 
   /**

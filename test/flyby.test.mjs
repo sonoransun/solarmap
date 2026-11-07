@@ -5,6 +5,9 @@ import { norm, dot, sub, mat3Apply, rotZ, normalize, angleBetween } from '../src
 import {
   duration, planProfile, arcHeight, bumpHeight, pathPoint, lateralNormal, trueSpeedC, arrivalOffset, rateCap,
   easeRate, smootherstep, minJerk, minJerkDeriv, warpCap, WARP_MIN_AU, WARP_RDISP_FACTOR, N_TABLE,
+  glideDuration, GLIDE_MIN_S, GLIDE_MAX_S, zoomFromFov, fovFromZoom, boundingSphere, skyFitFovRad,
+  SKY_MIN_FOV_RAD, SKY_MAX_FOV_RAD, SKY_TARGET_PX, SKY_PAIR_MARGIN, dampingForFrame, cancelDecelSeconds,
+  CANCEL_DECEL_S, CANCEL_COAST_FRACTION,
 } from '../src/astro/flyby.js';
 
 // Displayed radii at k = 1 (NSSDC mean radii, km / AU): R_disp is the only body-specific input of the profile.
@@ -297,4 +300,130 @@ test('rateCap: 365.25 d/s × 6.18 s > Neptune 60 189/50 → cap; small rates →
   assert.equal(easeRate(365.25, cap, 0.5), cap);
   assert.equal(easeRate(365.25, cap, 1), cap);
   assert.ok(Math.abs(easeRate(365.25, cap, 0.25) - 0.5 * (365.25 + cap)) < 1e-12, 'min-jerk midpoint');
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Camera-glide helpers (contracts §"Camera rig API additions"; used by src/render/camera.js)
+// ---------------------------------------------------------------------------------------------------------------
+
+test('glideDuration: 0.8 s for a nudge, 2.2 s across the map or for a U-turn, monotonic in each effort', () => {
+  assert.equal(glideDuration({}), GLIDE_MIN_S, 'no effort → 0.8 s');
+  assert.equal(GLIDE_MIN_S, 0.8); assert.equal(GLIDE_MAX_S, 2.2);
+  assert.equal(glideDuration({ travelAu: 50 }), GLIDE_MAX_S, '50 AU of travel → full 2.2 s');
+  assert.equal(glideDuration({ travelAu: 1e6 }), GLIDE_MAX_S, 'clamped above');
+  assert.equal(glideDuration({ turnRad: Math.PI }), GLIDE_MAX_S, '180° turn → 2.2 s');
+  assert.ok(Math.abs(glideDuration({ turnRad: 60 * DEG }) - (0.8 + 1.4 / 3)) < 1e-12, '60° turn → 1.267 s');
+  assert.equal(glideDuration({ zoomDecades: 3 }), GLIDE_MAX_S, '3 decades of zoom → 2.2 s');
+  assert.ok(Math.abs(glideDuration({ zoomDecades: -1.5 }) - 1.5) < 1e-12, '1.5 decades (either direction) → 1.5 s');
+  // Peak angular speed of a min-jerk slerp is 1.875·angle/T: 153°/s at 180°, 89°/s at 60° (no whip pans).
+  assert.ok(Math.abs(1.875 * 180 / glideDuration({ turnRad: Math.PI }) - 153.4) < 0.1, '153°/s peak for a U-turn');
+  assert.ok(Math.abs(1.875 * 60 / glideDuration({ turnRad: 60 * DEG }) - 88.8) < 0.1, '89°/s peak for 60°');
+  let prev = 0;
+  for (let d = 0; d <= 60; d += 0.5) { const t = glideDuration({ travelAu: d }); assert.ok(t >= prev, 'monotonic in travel'); prev = t; }
+  assert.ok(glideDuration({ travelAu: 0.01 }) > GLIDE_MIN_S && glideDuration({ travelAu: 0.01 }) < 0.95, '0.01 AU → just above 0.8 s');
+  assert.ok(Math.abs(glideDuration({ travelAu: 40 }) - 2.16) < 0.02, 'home → inner-system framing (≈ 40 AU) ≈ 2.16 s');
+  assert.equal(glideDuration({ travelAu: NaN, turnRad: NaN, zoomDecades: NaN }), GLIDE_MIN_S, 'NaN efforts count as none');
+  const mixed = glideDuration({ travelAu: 0.1, turnRad: 90 * DEG, zoomDecades: 0.2 });
+  assert.equal(mixed, glideDuration({ turnRad: 90 * DEG }), 'the largest effort wins (max, not sum)');
+});
+
+test('zoom space: round trip, 50° ↔ 0.25° is 5.08 e-folds, a zoom lerp halves the fov in equal time steps', () => {
+  for (const f of [0.25, 1, 10, 50, 100, 170]) {
+    assert.ok(Math.abs(fovFromZoom(zoomFromFov(f * DEG)) / DEG - f) < 1e-12, `round trip ${f}°`);
+  }
+  const span = zoomFromFov(50 * DEG) - zoomFromFov(0.25 * DEG);
+  assert.ok(Math.abs(span - Math.log(Math.tan(25 * DEG) / Math.tan(0.125 * DEG))) < 1e-12 && Math.abs(span - 5.364) < 0.01,
+    `50° → 0.25° spans ${span.toFixed(3)} e-folds of magnification`);
+  // Equal steps in z are equal magnification ratios: tan(fov/2) halves every ln 2.
+  const z0 = zoomFromFov(40 * DEG);
+  const r1 = Math.tan(fovFromZoom(z0 - Math.LN2) / 2) / Math.tan(20 * DEG);
+  const r2 = Math.tan(fovFromZoom(z0 - 2 * Math.LN2) / 2) / Math.tan(fovFromZoom(z0 - Math.LN2) / 2);
+  assert.ok(Math.abs(r1 - 0.5) < 1e-12 && Math.abs(r2 - 0.5) < 1e-12, 'constant-ratio zoom');
+});
+
+test('boundingSphere (Ritter): exact for 1–2 points, contains every point, ≤ 5 % above optimal for a sampled sphere', () => {
+  const empty = boundingSphere([]);
+  assert.deepEqual(empty, { center: [0, 0, 0], radius: 0 }, 'empty → origin, radius 0');
+  const one = boundingSphere([[1, 2, 3]]);
+  assert.deepEqual(one.center, [1, 2, 3]); assert.equal(one.radius, 0);
+  const two = boundingSphere([[0, 0, 0], [2, 0, 0]]);
+  assert.deepEqual(two.center, [1, 0, 0]); assert.equal(two.radius, 1, 'two points: midpoint, half the distance');
+  // Sun + Earth + Mars at opposition (collinear): sphere spans Sun…Mars.
+  const opp = boundingSphere([[0, 0, 0], [1, 0, 0], [1.524, 0, 0]]);
+  assert.ok(Math.abs(opp.center[0] - 0.762) < 1e-12 && Math.abs(opp.radius - 0.762) < 1e-12, 'collinear points: exact');
+  // 500 points on a unit sphere about (3, −2, 1) with a deterministic LCG.
+  let seed = 12345;
+  const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  const pts = [];
+  for (let i = 0; i < 500; i++) {
+    const u = 2 * rnd() - 1, ph = 2 * Math.PI * rnd(), s = Math.sqrt(1 - u * u);
+    pts.push([3 + s * Math.cos(ph), -2 + s * Math.sin(ph), 1 + u]);
+  }
+  const out = { center: [9, 9, 9], radius: 9 };
+  const bs = boundingSphere(pts, out);
+  assert.equal(bs, out, 'returns the out object');
+  for (const p of pts) {
+    const d = Math.hypot(p[0] - bs.center[0], p[1] - bs.center[1], p[2] - bs.center[2]);
+    assert.ok(d <= bs.radius + 1e-12, 'every point inside');
+  }
+  assert.ok(bs.radius >= 0.99 && bs.radius <= 1.05, `radius ${bs.radius} within 5 % of the optimal 1 (Ritter 1990)`);
+  assert.ok(Math.hypot(bs.center[0] - 3, bs.center[1] + 2, bs.center[2] - 1) < 0.06, 'centre within 0.06 of the truth');
+});
+
+test('skyFitFovRad: Great Conjunction → 0.25° floor with both discs ≥ 8 px; single target 40 px rule; H = 0 → base; clamps', () => {
+  const H = 900, base = 50 * DEG;
+  const rJ = 69911 / AU_KM, rS = 58232 / AU_KM;
+  const sep = 6.1 / 60 * DEG; // 2020-12-21 18:11 UTC: 6.1′ apart (fixture event)
+  const pair = [{ dist: 5.92, rDisp: rJ, offAxisRad: sep / 2 }, { dist: 10.8, rDisp: rS, offAxisRad: sep / 2 }];
+  const fov = skyFitFovRad({ targets: pair, H, baseFovRad: base });
+  assert.equal(fov, SKY_MIN_FOV_RAD, '0.25° floor binds (the px rule wants 0.048°, the pair spread 0.137°)');
+  assert.equal(SKY_MIN_FOV_RAD, 0.25 * DEG); assert.equal(SKY_MAX_FOV_RAD, 100 * DEG);
+  const pxJ = rJ / 5.92 / Math.tan(fov / 2) * H / 2, pxS = rS / 10.8 / Math.tan(fov / 2) * H / 2;
+  assert.ok(pxJ > 15 && pxJ < 18 && pxS > 7 && pxS < 9, `Jupiter ${pxJ.toFixed(1)} px, Saturn ${pxS.toFixed(1)} px of radius (old 10° floor: < 0.5 px)`);
+  assert.ok(sep / fov * H > 300, `pair separation ${(sep / fov * H).toFixed(0)} px on a 900 px viewport`);
+  // Single target: tan(fov/2) = R·H/(2·40·d) exactly when inside the clamps.
+  const single = skyFitFovRad({ targets: [{ dist: 0.5, rDisp: rJ, offAxisRad: 0 }], H, baseFovRad: base });
+  assert.ok(Math.abs(Math.tan(single / 2) - rJ * H / (80 * 0.5)) < 1e-15, '40 px rule: tan(fov/2) = R·H/(2·40·d) (Jupiter at 0.5 AU → 1.2°)');
+  assert.ok(Math.abs(single / DEG - 1.205) < 0.01, `fov ${(single / DEG).toFixed(3)}° for Jupiter at 0.5 AU`);
+  assert.ok(Math.abs(rJ / 0.5 / Math.tan(single / 2) * H / 2 - SKY_TARGET_PX) < 1e-9, 'projected radius = 40 px');
+  const big = skyFitFovRad({ targets: [{ dist: 0.5, rDisp: 50 * rJ, offAxisRad: 0 }], H, baseFovRad: base });
+  assert.equal(big, base, 'a target already ≥ 40 px at the base fov keeps the base fov (sizeK 50 Jupiter at 0.5 AU)');
+  assert.equal(skyFitFovRad({ targets: [{ dist: 0.5, rDisp: rJ, offAxisRad: 0 }], H: 0, baseFovRad: base }), base, 'no viewport height → base fov');
+  assert.equal(skyFitFovRad({ targets: [], H, baseFovRad: base }), base, 'no targets → base fov');
+  // A parade spanning 70° of sky: 2·70°·1.35 = 189° → clamped to 100°.
+  const wide = skyFitFovRad({ targets: [{ dist: 1, rDisp: rJ, offAxisRad: 70 * DEG }, { dist: 1, rDisp: rJ, offAxisRad: 70 * DEG }], H, baseFovRad: base });
+  assert.equal(wide, SKY_MAX_FOV_RAD, 'ceiling 100°');
+  assert.equal(SKY_PAIR_MARGIN, 1.35);
+  // `count` limits a reused scratch array.
+  const scratch = [{ dist: 5.92, rDisp: rJ, offAxisRad: 0 }, { dist: 1, rDisp: rJ, offAxisRad: 70 * DEG }];
+  assert.equal(skyFitFovRad({ targets: scratch, count: 1, H, baseFovRad: base }), SKY_MIN_FOV_RAD, 'count = 1 ignores the second entry');
+});
+
+test('dampingForFrame: 0.08 per 60 Hz frame; two 120 Hz frames or half a 30 Hz frame decay the same; dt ≤ 0 → 0', () => {
+  assert.ok(Math.abs(dampingForFrame(0.08, 1 / 60) - 0.08) < 1e-15, 'identity at 60 Hz');
+  const f120 = dampingForFrame(0.08, 1 / 120);
+  assert.ok(Math.abs((1 - f120) ** 2 - 0.92) < 1e-15, 'two 120 Hz frames leave 0.92 like one 60 Hz frame');
+  const f30 = dampingForFrame(0.08, 1 / 30);
+  assert.ok(Math.abs((1 - f30) - 0.92 ** 2) < 1e-15, 'one 30 Hz frame = two 60 Hz frames');
+  assert.equal(dampingForFrame(0.08, 0), 0, 'dt = 0 → nothing applied');
+  assert.equal(dampingForFrame(0.08, -1), 0, 'negative dt treated as 0');
+  assert.equal(dampingForFrame(0.08, NaN), 0, 'NaN dt treated as 0');
+  // Σ f(1 − f)^k = 1 for any f: the total travel is independent of the frame rate.
+  let left = 1, travelled = 0;
+  for (let k = 0; k < 2000; k++) { travelled += left * f120; left *= 1 - f120; }
+  assert.ok(Math.abs(travelled - 1) < 1e-12, 'total travel is 1 regardless of the per-frame factor');
+});
+
+test('cancelDecelSeconds: 0.6 s when far, shortened so the coast ≤ ¼ of the remaining chord, v0 untouched; v0 = 0 → 0.6 s', () => {
+  assert.equal(CANCEL_DECEL_S, 0.6); assert.equal(CANCEL_COAST_FRACTION, 0.25);
+  assert.equal(cancelDecelSeconds(1, 10), 0.6, 'coast 0.3 AU ≪ 2.5 AU allowed → full 0.6 s');
+  const near = cancelDecelSeconds(C_AU_S * 300, 0.05); // 300 c, 0.05 AU left
+  assert.ok(Math.abs(near - 2 * 0.25 * 0.05 / (C_AU_S * 300)) < 1e-18, 'T_d = 2·0.25·remaining/v0');
+  // The coast of v(t) = v0·(1 − minJerk(t/T_d)) is v0·T_d/2 (min-jerk integrates to ½): equals ¼ of the remaining chord.
+  let coast = 0; const N = 20000;
+  for (let i = 0; i < N; i++) coast += C_AU_S * 300 * (1 - minJerk((i + 0.5) / N)) * near / N;
+  assert.ok(Math.abs(coast - 0.0125) < 1e-9, `coast ${coast} AU = ¼ × 0.05 AU`);
+  assert.equal(cancelDecelSeconds(0, 1), 0.6, 'at rest: default length, no division by zero');
+  assert.equal(cancelDecelSeconds(NaN, 1), 0.6, 'NaN speed: default length');
+  assert.equal(cancelDecelSeconds(5, 0), 0, 'nothing left: stop at once (still continuous: v0 is never clamped)');
 });
